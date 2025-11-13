@@ -12,12 +12,12 @@ import base64
 
 # Page configuration
 st.set_page_config(
-    page_title="Basic Audio Book",
-    page_icon="🔊📄 ",
+    page_title="OCR Translator with TTS",
+    page_icon="📄",
     layout="centered"
 )
 
-st.title("🔊📄 Basic Audio Book")
+st.title("📄 OCR Translator with Text-to-Speech")
 st.markdown("Extract text from images/PDFs, translate, and listen to the results")
 st.markdown("---")
 
@@ -679,3 +679,29 @@ if uploaded_file is not None:
 else:
     st.info("👆 Please upload an image or PDF file to begin")
 
+st.markdown("---")
+st.markdown("### 📝 How It Works:")
+st.markdown("""
+**Complete Workflow:**
+1. 📄 **Upload** - Image or PDF document
+2. 🔍 **Extract** - Auto-detect language and extract text using OCR
+3. 🌐 **Translate** - Convert to your target language
+4. 🔊 **Listen** - Hear the translated text read aloud (optional)
+
+**Features:**
+- ✅ Auto language detection for OCR
+- ✅ 90+ languages for text extraction
+- ✅ 35+ languages for translation
+- ✅ Text-to-speech in 30+ languages
+- ✅ Download original, translated text, and audio
+- ✅ All processing in-memory (no data stored)
+
+**Perfect for:**
+- Learning new languages
+- Reading foreign documents
+- Accessibility (text-to-speech)
+- Document translation and archiving
+""")
+
+st.markdown("---")
+st.caption("Powered by Tesseract OCR, Google Translate, gTTS & deep-translator | No data stored")
