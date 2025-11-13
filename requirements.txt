@@ -1,1 +1,9 @@
 streamlit
+gtts
+SpeechRecognition 
+pydub
+openai-whisper
+pytesseract
+Pillow
+pdf2image
+langdetect

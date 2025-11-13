@@ -165,20 +165,7 @@ def extract_text_from_pdf(pdf_file, language_code):
             tmp_path = tmp_file.name
         
         # Convert PDF to images
-        try:
-            images = pdf2image.convert_from_path(tmp_path, dpi=300)
-        except Exception as e:
-            if "poppler" in str(e).lower():
-                raise Exception(
-                    "Poppler is not installed or not in PATH. "
-                    "Please install poppler-utils:\n"
-                    "- Ubuntu/Debian: sudo apt-get install poppler-utils\n"
-                    "- macOS: brew install poppler\n"
-                    "- Windows: Download from https://github.com/oschwartz10612/poppler-windows/releases/\n"
-                    "For Streamlit Cloud: Add 'poppler-utils' to packages.txt"
-                )
-            else:
-                raise e
+        images = pdf2image.convert_from_path(tmp_path, dpi=300)
         
         # Extract text from each page
         all_text = []
@@ -347,21 +334,6 @@ st.markdown("""
 - Ensure good contrast between text and background
 - Select the correct OCR language for better accuracy
 - For PDFs, each page is processed separately
-
-**Installation Requirements:**
-- **Tesseract OCR**: Main OCR engine
-- **Poppler Utils**: Required for PDF processing
-- **Language Packs**: Install tesseract-ocr-[lang] for each language you need
-
-**For Streamlit Cloud Deployment:**
-Create a `packages.txt` file with:
-```
-tesseract-ocr
-poppler-utils
-tesseract-ocr-eng
-tesseract-ocr-deu
-... (add other languages as needed)
-```
 """)
 
 st.markdown("---")
