@@ -55,7 +55,6 @@ tesseract-ocr-kaz
 tesseract-ocr-khm
 tesseract-ocr-kir
 tesseract-ocr-kor
-tesseract-ocr-kur
 tesseract-ocr-lao
 tesseract-ocr-lat
 tesseract-ocr-lav
@@ -91,7 +90,6 @@ tesseract-ocr-syr
 tesseract-ocr-tam
 tesseract-ocr-tel
 tesseract-ocr-tgk
-tesseract-ocr-tgl
 tesseract-ocr-tha
 tesseract-ocr-tir
 tesseract-ocr-tur
