@@ -7,18 +7,16 @@ import os
 from io import BytesIO
 import langdetect
 from deep_translator import GoogleTranslator
-from gtts import gTTS
-import base64
 
 # Page configuration
 st.set_page_config(
-    page_title="OCR Translator with TTS",
+    page_title="OCR Text Extractor with Translation",
     page_icon="📄",
     layout="centered"
 )
 
-st.title("📄 OCR Translator with Text-to-Speech")
-st.markdown("Extract text from images/PDFs, translate, and listen to the results")
+st.title("📄 OCR Text Extractor with Translation")
+st.markdown("Extract text from images and PDFs, then translate to your preferred language")
 st.markdown("---")
 
 # Tesseract language codes mapping (comprehensive list)
@@ -156,40 +154,29 @@ TRANSLATION_LANGUAGES = {
     "Telugu": "te",
 }
 
-# TTS language mapping (gTTS uses different codes)
-TTS_LANGUAGES = {
-    "English": "en",
-    "German": "de",
-    "Spanish": "es",
-    "French": "fr",
-    "Italian": "it",
-    "Portuguese": "pt",
-    "Dutch": "nl",
-    "Russian": "ru",
-    "Japanese": "ja",
-    "Korean": "ko",
-    "Chinese (Simplified)": "zh-CN",
-    "Chinese (Traditional)": "zh-TW",
-    "Arabic": "ar",
-    "Hindi": "hi",
-    "Turkish": "tr",
-    "Polish": "pl",
-    "Czech": "cs",
-    "Greek": "el",
-    "Hebrew": "he",
-    "Thai": "th",
-    "Vietnamese": "vi",
-    "Indonesian": "id",
-    "Filipino": "fil",
-    "Swedish": "sv",
-    "Norwegian": "no",
-    "Danish": "da",
-    "Finnish": "fi",
-    "Romanian": "ro",
-    "Bulgarian": "bg",
-    "Croatian": "hr",
-    "Serbian": "sr",
-    "Ukrainian": "uk",
+# Language detection mapping (ISO codes to language names)
+LANG_DETECT_MAP = {
+    "en": "English",
+    "de": "German",
+    "es": "Spanish",
+    "fr": "French",
+    "it": "Italian",
+    "pt": "Portuguese",
+    "nl": "Dutch",
+    "ru": "Russian",
+    "ja": "Japanese",
+    "zh-cn": "Chinese (Simplified)",
+    "zh-tw": "Chinese (Traditional)",
+    "ko": "Korean",
+    "ar": "Arabic",
+    "hi": "Hindi",
+    "tr": "Turkish",
+    "pl": "Polish",
+    "cs": "Czech",
+    "el": "Greek",
+    "he": "Hebrew",
+    "th": "Thai",
+    "vi": "Vietnamese",
 }
 
 def detect_language_advanced(text):
@@ -245,19 +232,24 @@ def auto_detect_and_extract(image_or_path, is_path=False):
     
     best_text = ""
     best_lang = "eng"
+    best_confidence = 0
     
     for lang_code in priority_languages:
         try:
             if is_path:
+                # For PDF processing
                 text = pytesseract.image_to_string(image_or_path, lang=lang_code, config='--oem 3 --psm 3')
             else:
+                # For image processing
                 text = pytesseract.image_to_string(image_or_path, lang=lang_code, config='--oem 3 --psm 3')
             
             # Check if we got meaningful text
             if len(text.strip()) > len(best_text.strip()):
+                # Try to detect language from extracted text
                 if len(text.strip()) > 20:
                     try:
-                        langdetect.detect(text)
+                        detected_lang_code = langdetect.detect(text)
+                        # If detected language matches what we tried, it's probably correct
                         best_text = text.strip()
                         best_lang = lang_code
                         break
@@ -268,6 +260,7 @@ def auto_detect_and_extract(image_or_path, is_path=False):
         except:
             continue
     
+    # If still no good results, try with English
     if not best_text:
         best_text = pytesseract.image_to_string(image_or_path, lang="eng", config='--oem 3 --psm 3').strip()
         best_lang = "eng"
@@ -277,11 +270,13 @@ def auto_detect_and_extract(image_or_path, is_path=False):
 def translate_text(text, target_lang):
     """Translate text to target language using Google Translate"""
     try:
+        # Split text into chunks if too long (Google Translate has limits)
         max_length = 4500
         if len(text) <= max_length:
             translator = GoogleTranslator(source='auto', target=target_lang)
             return translator.translate(text)
         else:
+            # Split by paragraphs and translate in chunks
             paragraphs = text.split('\n\n')
             translated_paragraphs = []
             current_chunk = ""
@@ -295,6 +290,7 @@ def translate_text(text, target_lang):
                         translated_paragraphs.append(translator.translate(current_chunk))
                     current_chunk = para + "\n\n"
             
+            # Translate remaining chunk
             if current_chunk:
                 translator = GoogleTranslator(source='auto', target=target_lang)
                 translated_paragraphs.append(translator.translate(current_chunk))
@@ -303,39 +299,10 @@ def translate_text(text, target_lang):
     except Exception as e:
         raise Exception(f"Translation error: {str(e)}")
 
-def text_to_speech(text, lang_code, slow=False):
-    """Convert text to speech using gTTS"""
-    try:
-        # Limit text length for TTS (gTTS has limits)
-        max_tts_length = 3000
-        if len(text) > max_tts_length:
-            text = text[:max_tts_length] + "..."
-            st.warning(f"⚠️ Text truncated to {max_tts_length} characters for audio generation")
-        
-        tts = gTTS(text=text, lang=lang_code, slow=slow)
-        audio_fp = BytesIO()
-        tts.write_to_fp(audio_fp)
-        audio_fp.seek(0)
-        
-        # Convert to base64
-        audio_bytes = audio_fp.read()
-        audio_base64 = base64.b64encode(audio_bytes).decode()
-        
-        # Create HTML5 audio player
-        audio_html = f"""
-        <audio controls autoplay style="width: 100%; margin-top: 10px;">
-            <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-            Your browser does not support the audio element.
-        </audio>
-        """
-        
-        return audio_html, audio_fp
-    except Exception as e:
-        raise Exception(f"TTS error: {str(e)}")
-
 def extract_text_from_image(image, language_code):
     """Extract text from PIL Image using Tesseract OCR"""
     try:
+        # Configure Tesseract with selected language
         custom_config = f'--oem 3 --psm 3'
         text = pytesseract.image_to_string(image, lang=language_code, config=custom_config)
         return text.strip()
@@ -346,20 +313,28 @@ def extract_text_from_pdf(pdf_file, language_code):
     """Extract text from PDF file"""
     tmp_path = None
     try:
+        # Save PDF to temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
             tmp_file.write(pdf_file.read())
             tmp_path = tmp_file.name
         
+        # Convert PDF to images
         try:
             images = pdf2image.convert_from_path(tmp_path, dpi=300)
         except Exception as e:
             if "poppler" in str(e).lower():
                 raise Exception(
-                    "Poppler is not installed. Add 'poppler-utils' to packages.txt for Streamlit Cloud"
+                    "Poppler is not installed or not in PATH. "
+                    "Please install poppler-utils:\n"
+                    "- Ubuntu/Debian: sudo apt-get install poppler-utils\n"
+                    "- macOS: brew install poppler\n"
+                    "- Windows: Download from https://github.com/oschwartz10612/poppler-windows/releases/\n"
+                    "For Streamlit Cloud: Add 'poppler-utils' to packages.txt"
                 )
             else:
                 raise e
         
+        # Extract text from each page
         all_text = []
         for i, image in enumerate(images):
             st.info(f"Processing page {i+1} of {len(images)}...")
@@ -370,6 +345,7 @@ def extract_text_from_pdf(pdf_file, language_code):
         return "\n\n".join(all_text)
     
     finally:
+        # Clean up temporary file
         if tmp_path and os.path.exists(tmp_path):
             try:
                 os.unlink(tmp_path)
@@ -379,34 +355,27 @@ def extract_text_from_pdf(pdf_file, language_code):
 # Language selection
 st.markdown("### Settings")
 
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
     detection_mode = st.radio(
-        "Source Language:",
-        options=["Auto-detect", "Manual"],
+        "Source Language Detection:",
+        options=["Auto-detect (Recommended)", "Manual Selection"],
         index=0,
         help="Auto-detect will try multiple languages for best OCR results"
     )
 
 with col2:
     translation_language = st.selectbox(
-        "Translate To:",
+        "Translation Language (Target):",
         options=list(TRANSLATION_LANGUAGES.keys()),
         index=1,  # Default to English
-        help="Select target language for translation"
-    )
-
-with col3:
-    enable_tts = st.checkbox(
-        "Enable TTS",
-        value=True,
-        help="Read translated text aloud"
+        help="Select target language for translation (or 'No Translation' to keep original)"
     )
 
 # Manual language selection (only shown if Manual mode is selected)
 manual_ocr_language = None
-if detection_mode == "Manual":
+if detection_mode == "Manual Selection":
     sorted_languages = sorted(LANGUAGES.keys())
     default_index = sorted_languages.index("English")
     
@@ -419,29 +388,15 @@ if detection_mode == "Manual":
 
 translation_lang_code = TRANSLATION_LANGUAGES[translation_language]
 
-# TTS options
-if enable_tts and translation_lang_code:
-    col_tts1, col_tts2 = st.columns(2)
-    with col_tts1:
-        tts_slow = st.checkbox("Slow speech (for learning)", value=False)
-    with col_tts2:
-        auto_play = st.checkbox("Auto-play audio", value=True)
-
 # Info box explaining the workflow
-if detection_mode == "Auto-detect":
+if detection_mode == "Auto-detect (Recommended)":
     if translation_lang_code:
-        workflow = f"📋 Workflow: Auto-detect → Extract → Translate to **{translation_language}**"
-        if enable_tts:
-            workflow += f" → 🔊 Read aloud"
-        st.info(workflow)
+        st.info(f"📋 Workflow: Auto-detect source language → Extract text → Translate to **{translation_language}**")
     else:
-        st.info(f"📋 Workflow: Auto-detect → Extract text (no translation)")
+        st.info(f"📋 Workflow: Auto-detect source language → Extract text (no translation)")
 else:
     if translation_lang_code:
-        workflow = f"📋 Workflow: Extract in **{manual_ocr_language}** → Translate to **{translation_language}**"
-        if enable_tts:
-            workflow += f" → 🔊 Read aloud"
-        st.info(workflow)
+        st.info(f"📋 Workflow: Extract text in **{manual_ocr_language}** → Translate to **{translation_language}**")
     else:
         st.info(f"📋 Workflow: Extract text in **{manual_ocr_language}** (no translation)")
 
@@ -450,10 +405,10 @@ st.markdown("### Advanced Options")
 col3, col4 = st.columns(2)
 
 with col3:
-    show_confidence = st.checkbox("Show OCR confidence scores", value=False)
+    auto_detect = st.checkbox("Auto-detect language after extraction", value=True)
 
 with col4:
-    show_original = st.checkbox("Show original text", value=True)
+    show_confidence = st.checkbox("Show OCR confidence scores", value=False)
 
 # File uploader
 st.markdown("### Upload File")
@@ -473,21 +428,23 @@ if uploaded_file is not None:
     if file_type in ['jpg', 'jpeg', 'png']:
         image = Image.open(uploaded_file)
         st.image(image, caption="Uploaded Image", use_container_width=True)
-        uploaded_file.seek(0)
+        uploaded_file.seek(0)  # Reset file pointer
     else:
         st.info("📄 PDF file uploaded - preview not available")
     
     # Extract text button
-    if st.button("🔍 Extract, Translate & Speak", type="primary"):
+    if st.button("🔍 Extract & Translate Text", type="primary"):
         
         # Determine which OCR approach to use
-        if detection_mode == "Auto-detect":
+        if detection_mode == "Auto-detect (Recommended)":
             with st.spinner("Auto-detecting language and extracting text..."):
                 try:
+                    # Extract text based on file type with auto-detection
                     if file_type in ['jpg', 'jpeg', 'png']:
                         image = Image.open(uploaded_file)
                         extracted_text, detected_lang_code = auto_detect_and_extract(image, is_path=False)
                     elif file_type == 'pdf':
+                        # For PDF, process first page to detect language, then use that for all pages
                         tmp_path = None
                         try:
                             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
@@ -498,14 +455,16 @@ if uploaded_file is not None:
                                 images = pdf2image.convert_from_path(tmp_path, dpi=300)
                             except Exception as e:
                                 if "poppler" in str(e).lower():
-                                    raise Exception("Poppler is not installed. Add 'poppler-utils' to packages.txt")
+                                    raise Exception("Poppler is not installed. Add 'poppler-utils' to packages.txt for Streamlit Cloud")
                                 else:
                                     raise e
                             
                             if images:
+                                # Detect language from first page
                                 st.info("Detecting language from first page...")
                                 first_page_text, detected_lang_code = auto_detect_and_extract(images[0], is_path=False)
                                 
+                                # Now extract all pages with detected language
                                 all_text = []
                                 for i, image in enumerate(images):
                                     st.info(f"Processing page {i+1} of {len(images)}...")
@@ -528,6 +487,7 @@ if uploaded_file is not None:
                         st.stop()
                     
                     if extracted_text:
+                        # Map detected code to language name
                         lang_code_to_name = {v: k for k, v in LANGUAGES.items()}
                         detected_language = lang_code_to_name.get(detected_lang_code, "Unknown")
                         
@@ -543,6 +503,7 @@ if uploaded_file is not None:
             
             with st.spinner(f"Extracting text using {manual_ocr_language} OCR..."):
                 try:
+                    # Extract text based on file type
                     if file_type in ['jpg', 'jpeg', 'png']:
                         image = Image.open(uploaded_file)
                         extracted_text = extract_text_from_image(image, ocr_lang_code)
@@ -568,7 +529,7 @@ if uploaded_file is not None:
                     if file_type in ['jpg', 'jpeg', 'png']:
                         image = Image.open(uploaded_file)
                         uploaded_file.seek(0)
-                        ocr_code = detected_lang_code if detection_mode == "Auto-detect" else ocr_lang_code
+                        ocr_code = detected_lang_code if detection_mode == "Auto-detect (Recommended)" else ocr_lang_code
                         data = pytesseract.image_to_data(image, lang=ocr_code, output_type=pytesseract.Output.DICT)
                         confidences = [int(conf) for conf in data['conf'] if conf != '-1']
                         if confidences:
@@ -577,20 +538,20 @@ if uploaded_file is not None:
                 except:
                     pass
             
-            # Display original extracted text if enabled
-            if show_original:
-                st.markdown(f"### 📄 Extracted Text ({detected_language}):")
-                st.text_area(
-                    "Original:",
-                    extracted_text,
-                    height=200,
-                    label_visibility="collapsed",
-                    key="original_text"
-                )
-                
-                char_count = len(extracted_text)
-                word_count = len(extracted_text.split())
-                st.caption(f"Characters: {char_count} | Words: {word_count}")
+            # Display extracted text
+            st.markdown(f"### 📄 Extracted Text ({detected_language}):")
+            st.text_area(
+                "Original:",
+                extracted_text,
+                height=200,
+                label_visibility="collapsed",
+                key="original_text"
+            )
+            
+            # Character and word count
+            char_count = len(extracted_text)
+            word_count = len(extracted_text.split())
+            st.caption(f"Characters: {char_count} | Words: {word_count}")
             
             # Translate if target language is selected
             translated_text = None
@@ -609,47 +570,25 @@ if uploaded_file is not None:
                             key="translated_text"
                         )
                         
+                        # Character and word count for translation
                         trans_char_count = len(translated_text)
                         trans_word_count = len(translated_text.split())
                         st.caption(f"Characters: {trans_char_count} | Words: {trans_word_count}")
-                        
-                        # Generate TTS for translated text
-                        if enable_tts and translation_language in TTS_LANGUAGES:
-                            with st.spinner("Generating audio..."):
-                                try:
-                                    tts_lang_code = TTS_LANGUAGES[translation_language]
-                                    audio_html, audio_fp = text_to_speech(translated_text, tts_lang_code, slow=tts_slow if 'tts_slow' in locals() else False)
-                                    
-                                    st.success("✅ Audio generated!")
-                                    st.markdown(f"### 🔊 Listen to Translation ({translation_language}):")
-                                    st.markdown(audio_html, unsafe_allow_html=True)
-                                    
-                                    # Download button for audio
-                                    audio_fp.seek(0)
-                                    st.download_button(
-                                        label="📥 Download Audio (MP3)",
-                                        data=audio_fp,
-                                        file_name=f"translated_audio_{translation_language.lower()}.mp3",
-                                        mime="audio/mp3",
-                                        key="download_audio"
-                                    )
-                                    
-                                except Exception as e:
-                                    st.error(f"❌ TTS error: {str(e)}")
-                        elif enable_tts:
-                            st.warning(f"⚠️ TTS not available for {translation_language}")
                         
                     except Exception as e:
                         st.error(f"❌ Translation error: {str(e)}")
                         st.info("💡 Translation failed, but you can still download the original extracted text below.")
             
-            # Download buttons for text files
-            st.markdown("### 📥 Download Text Files")
+            # Download buttons
+            st.markdown("### 📥 Download Options")
             col_dl1, col_dl2 = st.columns(2)
             
             with col_dl1:
+                # Prepare output filename for original
                 base_name = uploaded_file.name.rsplit('.', 1)[0]
                 original_filename = f"{base_name}_extracted_{detected_language.lower().replace(' ', '_')}.txt"
+                
+                # Create text file for download
                 original_bytes = extracted_text.encode('utf-8')
                 
                 st.download_button(
@@ -662,7 +601,10 @@ if uploaded_file is not None:
             
             with col_dl2:
                 if translated_text:
+                    # Prepare output filename for translation
                     translated_filename = f"{base_name}_translated_{translation_language.lower().replace(' ', '_')}.txt"
+                    
+                    # Create text file for download
                     translated_bytes = translated_text.encode('utf-8')
                     
                     st.download_button(
@@ -677,31 +619,31 @@ if uploaded_file is not None:
             st.warning("⚠️ No text found in the document. Try using manual language selection or check image quality.")
 
 else:
-    st.info("👆 Please upload an image or PDF file to begin")
+    st.info("👆 Please upload an image or PDF file to begin text extraction")
 
 st.markdown("---")
 st.markdown("### 📝 How It Works:")
 st.markdown("""
-**Complete Workflow:**
-1. 📄 **Upload** - Image or PDF document
-2. 🔍 **Extract** - Auto-detect language and extract text using OCR
-3. 🌐 **Translate** - Convert to your target language
-4. 🔊 **Listen** - Hear the translated text read aloud (optional)
+**Auto-detect Mode (Recommended):**
+1. Upload your document (image or PDF)
+2. App automatically detects the source language
+3. Extracts text using the detected language
+4. Translates to your selected target language (if chosen)
 
-**Features:**
-- ✅ Auto language detection for OCR
-- ✅ 90+ languages for text extraction
-- ✅ 35+ languages for translation
-- ✅ Text-to-speech in 30+ languages
-- ✅ Download original, translated text, and audio
-- ✅ All processing in-memory (no data stored)
+**Manual Mode:**
+- Use this if auto-detection fails or you know the exact source language
+- Manually select the OCR language for extraction
 
-**Perfect for:**
-- Learning new languages
-- Reading foreign documents
-- Accessibility (text-to-speech)
-- Document translation and archiving
+**Example Workflow:**
+- Upload a German PDF → App detects "German" → Translate to "English"
+- Result: German text extracted and translated to English ✅
+
+**Tips for best results:**
+- Use high-quality, clear images (300 DPI or higher)
+- Ensure good contrast between text and background
+- Auto-detect works best with clear, well-formatted text
+- Use Manual mode for documents with poor quality or mixed languages
 """)
 
 st.markdown("---")
-st.caption("Powered by Tesseract OCR, Google Translate, gTTS & deep-translator | No data stored")
+st.caption("Powered by Tesseract OCR, Google Translate & deep-translator | No data stored | All processing in-memory")
