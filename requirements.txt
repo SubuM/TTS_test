@@ -7,3 +7,4 @@ pytesseract
 Pillow
 pdf2image
 langdetect
+deep-translator
