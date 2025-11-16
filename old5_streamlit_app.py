@@ -10,21 +10,9 @@ from deep_translator import GoogleTranslator
 from gtts import gTTS
 import base64
 import sqlite3
-import hashlib  # Keep for admin hash comparison (or remove if not needed)
-import re
+import hashlib
 from datetime import datetime
-
-# --- NEW: Import passlib for secure password hashing ---
-try:
-    from passlib.context import CryptContext
-except ImportError:
-    st.error("Missing 'passlib'! Please run 'pip install passlib bcrypt'")
-    st.stop()
-
-# --- NEW: Setup passlib context ---
-# We will use bcrypt for all new and verified passwords
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
+import re
 
 # Page configuration
 st.set_page_config(
@@ -105,16 +93,6 @@ st.markdown("""
         background: linear-gradient(135deg, #A0522D 0%, #8B4513 100%);
         box-shadow: 0 6px 8px rgba(0,0,0,0.3);
         transform: translateY(-2px);
-    }
-    
-    /* --- NEW: Danger zone button style --- */
-    [data-testid="stButton"] button[type="primary"] {
-        background: #D9534F; /* Red for delete */
-        border: none;
-    }
-    
-    [data-testid="stButton"] button[type="primary"]:hover {
-        background: #C9302C; /* Darker red */
     }
     
     /* Text area styling */
@@ -216,8 +194,6 @@ def init_database():
     ''')
     
     # Create activity log table
-    # --- UPDATED: Added 'ON DELETE CASCADE' ---
-    # This automatically deletes a user's activity log when their account is deleted.
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS activity_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -227,7 +203,7 @@ def init_database():
             target_language TEXT,
             character_count INTEGER,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            FOREIGN KEY (user_id) REFERENCES users (id)
         )
     ''')
     
@@ -240,8 +216,7 @@ def init_database():
         st.error("⚠️ Admin credentials not found in secrets! Please configure secrets.toml")
         st.stop()
     
-    # --- UPDATED: Use passlib to hash the admin password ---
-    admin_password_hash = pwd_context.hash(admin_password)
+    admin_password_hash = hashlib.sha256(admin_password.encode()).hexdigest()
     
     cursor.execute('SELECT id FROM users WHERE username = ?', (admin_username,))
     if not cursor.fetchone():
@@ -253,8 +228,9 @@ def init_database():
     
     conn.close()
 
-# --- REMOVED: Old hash_password function ---
-# def hash_password(password): ...
+def hash_password(password):
+    """Hash password using SHA256"""
+    return hashlib.sha256(password.encode()).hexdigest()
 
 def validate_email(email):
     """Validate email format"""
@@ -317,12 +293,11 @@ def check_email_exists(email):
     return exists
 
 def create_user(username, password, email=None):
-    """Create a new user with a securely hashed password"""
+    """Create a new user"""
     try:
         conn = sqlite3.connect('users.db', check_same_thread=False)
         cursor = conn.cursor()
-        # --- UPDATED: Use passlib to hash password ---
-        password_hash = pwd_context.hash(password)
+        password_hash = hash_password(password)
         cursor.execute('INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)',
                       (username, password_hash, email))
         conn.commit()
@@ -338,42 +313,15 @@ def create_user(username, password, email=None):
         return False, f"Error: {str(e)}"
 
 def verify_user(username, password):
-    """Verify user credentials against the securely hashed password"""
+    """Verify user credentials"""
     conn = sqlite3.connect('users.db', check_same_thread=False)
     cursor = conn.cursor()
-    
-    # --- UPDATED: Two-step verification ---
-    # 1. Get user by username
-    cursor.execute('SELECT id, username, password_hash, is_admin FROM users WHERE username = ?', (username,))
+    password_hash = hash_password(password)
+    cursor.execute('SELECT id, username, is_admin FROM users WHERE username = ? AND password_hash = ?',
+                  (username, password_hash))
     user = cursor.fetchone()
     conn.close()
-    
-    if user:
-        # 2. Verify password against the stored hash
-        stored_hash = user[2]
-        if pwd_context.verify(password, stored_hash):
-            # Return (id, username, is_admin)
-            return (user[0], user[1], user[3])
-            
-    # If user not found or password incorrect
-    return None
-
-# --- NEW: Function to delete a user and their data ---
-def delete_user(user_id):
-    """Deletes a user from the users table.
-    Their activity_log entries are deleted automatically via ON DELETE CASCADE.
-    """
-    try:
-        conn = sqlite3.connect('users.db', check_same_thread=False)
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        st.error(f"Error deleting account: {e}")
-        return False
-
+    return user
 
 def log_activity(user_id, activity_type, source_lang=None, target_lang=None, char_count=None):
     """Log user activity - ONLY metadata, NO content stored"""
@@ -469,10 +417,6 @@ if 'username' not in st.session_state:
     st.session_state.username = None
 if 'is_admin' not in st.session_state:
     st.session_state.is_admin = False
-# --- NEW: Session state for delete confirmation ---
-if 'show_delete_confirm' not in st.session_state:
-    st.session_state.show_delete_confirm = False
-
 
 # Authentication UI
 if not st.session_state.logged_in:
@@ -495,7 +439,7 @@ if not st.session_state.logged_in:
         login_username = st.text_input("👤 Username", key="login_username", placeholder="Enter your username")
         login_password = st.text_input("🔒 Password", type="password", key="login_password", placeholder="Enter your password")
         
-        if st.button("📖 Enter Library", type="primary", use_container_width=True, key="login_btn"):
+        if st.button("📖 Enter Library", type="primary", use_container_width=True):
             if login_username and login_password:
                 user = verify_user(login_username, login_password)
                 if user:
@@ -599,27 +543,24 @@ if not st.session_state.logged_in:
         
         if agree_terms:
             with st.expander("📜 View Privacy Policy"):
-                # --- UPDATED: Honest Privacy Policy ---
                 st.markdown("""
                 **Privacy Policy Summary:**
-                
-                We are committed to user privacy. We store **only** the data necessary 
-                for your account to function and to track usage statistics. 
-                
-                We **NEVER** store your personal documents, extracted text, or audio.
-
-                ---
+                - We do not store your uploaded documents or extracted text
+                - Only usage statistics (metadata) are stored
+                - Your password is securely hashed (never stored in plain text)
+                - Your email is used only for account management
+                - No third-party data sharing
+                - Data is stored locally and securely
                 
                 **What we collect:**
-                - ✅ Username, email, and securely hashed password (for login)
-                - ✅ Usage statistics: Activity type (e.g., 'OCR'), character count, 
-                     language choices, and timestamps.
+                - Username, email, and hashed password
+                - Usage statistics: activity count, character count, language preferences
                 
-                **What we DON'T collect (and never store):**
-                - ❌ Your uploaded documents (PDFs, images)
-                - ❌ The text extracted from your documents
-                - ❌ The translated text
-                - ❌ The generated audio files
+                **What we DON'T collect:**
+                - Document content
+                - Extracted text
+                - Generated audio files
+                - Any sensitive information from your uploads
                 """)
         
         st.markdown("---")
@@ -699,14 +640,13 @@ if not st.session_state.logged_in:
     
     st.markdown("---")
     
-    # --- UPDATED: Honest Privacy Policy ---
     st.markdown("""
     ### 🔒 Privacy & Security:
-    - ✅ **Document Privacy** - All files (PDFs, images), extracted text, and audio are processed 
-      in-memory only and are **never stored** on our server.
-    - ✅ **Account Security** - User passwords are secured using **bcrypt**, a strong, salted hashing algorithm.
-    - ✅ **Usage Statistics** - We only store anonymous metadata (e.g., character count, language choice) 
-      to provide your usage stats. We **never** store the *content* of your documents.
+    - ✅ **No documents stored** - All files processed in-memory only
+    - ✅ **No text content saved** - Only usage statistics
+    - ✅ **No audio files stored** - Generated on-demand
+    - ✅ **Secure passwords** - Hashed with SHA256
+    - ✅ **Temporary processing** - Files deleted immediately
     """)
     st.stop()
 
@@ -730,12 +670,11 @@ with st.sidebar:
         st.markdown(f"**{st.session_state.username}**")
         st.caption("Audiobook Enthusiast")
     
-    if st.button("🚪 Exit Library", type="secondary", use_container_width=True, key="logout_btn"):
+    if st.button("🚪 Exit Library", type="secondary", use_container_width=True):
         st.session_state.logged_in = False
         st.session_state.user_id = None
         st.session_state.username = None
         st.session_state.is_admin = False
-        st.session_state.show_delete_confirm = False # Reset on logout
         st.rerun()
     
     st.markdown("---")
@@ -767,43 +706,13 @@ with st.sidebar:
                 st.markdown(f"- {lang}: {count}×")
     
     st.markdown("---")
-    
-    # --- NEW: Delete Account Section ---
-    if not st.session_state.is_admin: # Admins can't delete themselves this way
-        st.markdown("### ⚠️ Danger Zone")
-        
-        if st.button("Delete My Account", type="primary", use_container_width=True, key="delete_account_btn"):
-            st.session_state.show_delete_confirm = True
+    st.caption("🔒 Your privacy is protected")
+    st.caption("No content stored")
 
-        if st.session_state.get("show_delete_confirm", False):
-            st.warning("This is permanent and cannot be undone! All your activity data will be erased.")
-            
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("Confirm Deletion", type="primary", use_container_width=True, key="confirm_delete_btn"):
-                    if delete_user(st.session_state.user_id):
-                        st.success("Account deleted.")
-                        # Log out
-                        st.session_state.logged_in = False
-                        st.session_state.user_id = None
-                        st.session_state.username = None
-                        st.session_state.is_admin = False
-                        st.session_state.show_delete_confirm = False
-                        st.rerun()
-                    else:
-                        st.error("Failed to delete account.")
-            with c2:
-                if st.button("Cancel", type="secondary", use_container_width=True, key="cancel_delete_btn"):
-                    st.session_state.show_delete_confirm = False
-                    st.rerun()
-    
-    st.markdown("---")
-    # --- UPDATED: Honest Privacy Caption ---
-    st.caption("🔒 Your document *content* is never stored.")
-
-# ... (Rest of the app code: LANGUAGES, TRANSLATION_LANGUAGES, TTS_LANGUAGES, etc.) ...
-# ... (All the functions: detect_language_advanced, auto_detect_and_extract, etc.) ...
-# ... (The entire main app UI: File uploader, settings, etc.) ...
+st.markdown('<div class="book-card">', unsafe_allow_html=True)
+st.markdown("### 📖 Book Settings")
+st.markdown("Configure your reading and listening preferences")
+st.markdown('</div>', unsafe_allow_html=True)
 
 # Tesseract language codes mapping (comprehensive list)
 LANGUAGES = {
@@ -1161,11 +1070,6 @@ def extract_text_from_pdf(pdf_file, language_code):
             except:
                 pass
 
-st.markdown('<div class="book-card">', unsafe_allow_html=True)
-st.markdown("### 📖 Book Settings")
-st.markdown("Configure your reading and listening preferences")
-st.markdown('</div>', unsafe_allow_html=True)
-
 # Language selection
 st.markdown("---")
 
@@ -1285,7 +1189,7 @@ if uploaded_file is not None:
     st.markdown('</div>', unsafe_allow_html=True)
     
     # Extract text button
-    if st.button("🎧 Start AudioBook", type="primary", use_container_width=True, key="start_audiobook_btn"):
+    if st.button("🎧 Start AudioBook", type="primary", use_container_width=True):
         
         # Determine which OCR approach to use
         if detection_mode == "Auto-detect":
@@ -1373,7 +1277,7 @@ if uploaded_file is not None:
                     st.stop()
         
         # Continue with common processing for both modes
-        if 'extracted_text' in locals() and extracted_text:
+        if extracted_text:
             
             # Show confidence scores if enabled
             if show_confidence:
@@ -1513,34 +1417,33 @@ else:
     st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("---")
-# --- UPDATED: Final, Honest Privacy Policy ---
 st.markdown("### 🔒 Privacy & Data Policy:")
 st.markdown("""
 **What We Store:**
-- ✅ Username and securely hashed password (for authentication)
-- ✅ Your email address (for account management)
-- ✅ Activity metadata: timestamps, language selections, character counts (to power your 'Reading Stats')
+- ✅ Username and hashed password (for authentication)
+- ✅ Activity metadata: timestamps, language selections, character counts
 
 **What We DO NOT Store:**
-- ❌ Uploaded documents (images/PDFs) are **deleted immediately** after processing
-- ❌ Extracted text content is **never** written to disk
-- ❌ Translated text is **never** stored
-- ❌ Generated audio files are processed in-memory and **never** saved
+- ❌ Uploaded documents (images/PDFs)
+- ❌ Extracted text content
+- ❌ Translated text
+- ❌ Generated audio files
+- ❌ Any document content whatsoever
 
 **How We Process Your Data:**
 1. 📤 Files uploaded → processed in RAM only
-2. 🔍 Text extracted → displayed to you, **not saved**
-3. 🌐 Translation → generated on-the-fly, **not stored**
+2. 🔍 Text extracted → displayed to you, never saved
+3. 🌐 Translation → generated on-the-fly, not stored
 4. 🔊 Audio → created in-memory, deleted after playback
-5. 🗑️ Temporary files are deleted immediately
+5. 🗑️ Temporary files deleted immediately after processing
 
 **Your Privacy is Guaranteed:**
-- All document processing happens in temporary memory.
-- We only track usage statistics (no actual content).
-- You can download your results, but we don't keep copies.
-- You can **delete your account** and all associated metadata at any time from the sidebar.
+- All document processing happens in temporary memory
+- No content is written to disk (except temporary system files deleted immediately)
+- Only usage statistics tracked (no actual content)
+- You can download your results, but we don't keep copies
 """)
 
 
-st.caption("🔒 Document content is **never** stored | Privacy-first design")
-st.caption("⚠️ Important: Download your results before leaving the page!")
+st.caption("🔒  Zero data retention | Privacy-first design")
+st.caption("⚠️ Important: We do not store any document content. Download your results before leaving the page!")
