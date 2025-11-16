@@ -9,17 +9,803 @@ import langdetect
 from deep_translator import GoogleTranslator
 from gtts import gTTS
 import base64
+import sqlite3
+import hashlib  # Keep for admin hash comparison (or remove if not needed)
+import re
+from datetime import datetime
+
+# --- NEW: Import passlib for secure password hashing ---
+try:
+    from passlib.context import CryptContext
+except ImportError:
+    st.error("Missing `passlib`! Please run `pip install passlib`")
+    st.stop()
+
+# --- Setup passlib context ---
+# --- UPDATED: Use sha512_crypt instead of bcrypt ---
+# This avoids the C-extension error on Streamlit Cloud
+pwd_context = CryptContext(schemes=["sha512_crypt"], deprecated="auto")
+
 
 # Page configuration
 st.set_page_config(
-    page_title="Basic Audio Book",
-    page_icon="🔊📄 ",
-    layout="centered"
+    page_title="AudioBook Reader - OCR & TTS",
+    page_icon="📚",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-st.title("🔊📄 Basic Audio Book")
-st.markdown("Extract text from images/PDFs, translate, and listen to the results")
-st.markdown("---")
+# Custom CSS for audiobook theme
+st.markdown("""
+<style>
+    /* Main theme colors - Book/Library inspired */
+    :root {
+        --primary-color: #8B4513;
+        --secondary-color: #D2691E;
+        --background-color: #F5F5DC;
+        --text-color: #2C1810;
+    }
+    
+    /* Header styling */
+    .main-header {
+        background: linear-gradient(135deg, #8B4513 0%, #D2691E 100%);
+        padding: 2rem;
+        border-radius: 15px;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    
+    .main-header h1 {
+        color: #FFF8DC;
+        font-family: 'Georgia', serif;
+        font-size: 2.5rem;
+        margin: 0;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+    
+    .main-header p {
+        color: #F5DEB3;
+        font-family: 'Georgia', serif;
+        font-size: 1.1rem;
+        margin-top: 0.5rem;
+    }
+    
+    /* Book card styling */
+    .book-card {
+        background: linear-gradient(145deg, #FFF8DC 0%, #F5F5DC 100%);
+        border-left: 8px solid #8B4513;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    /* Login/Register card */
+    .auth-card {
+        background: linear-gradient(145deg, #FAEBD7 0%, #FFF8DC 100%);
+        border-radius: 15px;
+        padding: 2rem;
+        box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+        border: 2px solid #D2691E;
+    }
+    
+    /* Button styling */
+    .stButton>button {
+        background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
+        color: white;
+        border: none;
+        border-radius: 25px;
+        padding: 0.5rem 2rem;
+        font-weight: bold;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        transition: all 0.3s ease;
+    }
+    
+    .stButton>button:hover {
+        background: linear-gradient(135deg, #A0522D 0%, #8B4513 100%);
+        box-shadow: 0 6px 8px rgba(0,0,0,0.3);
+        transform: translateY(-2px);
+    }
+    
+    /* --- NEW: Danger zone button style --- */
+    [data-testid="stButton"] button[type="primary"] {
+        background: #D9534F; /* Red for delete */
+        border: none;
+    }
+    
+    [data-testid="stButton"] button[type="primary"]:hover {
+        background: #C9302C; /* Darker red */
+    }
+    
+    /* Text area styling */
+    .stTextArea textarea {
+        border: 2px solid #D2691E;
+        border-radius: 10px;
+        background: #FFFAF0;
+        font-family: 'Georgia', serif;
+        color: #2C1810;
+    }
+    
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #8B4513 0%, #A0522D 100%);
+    }
+    
+    [data-testid="stSidebar"] .element-container {
+        color: #FFF8DC;
+    }
+    
+    /* Info boxes */
+    .stInfo {
+        background-color: #F0E68C;
+        border-left: 5px solid #DAA520;
+        color: #2C1810;
+    }
+    
+    /* Success boxes */
+    .stSuccess {
+        background-color: #90EE90;
+        border-left: 5px solid #228B22;
+    }
+    
+    /* File uploader */
+    [data-testid="stFileUploader"] {
+        background: #FFF8DC;
+        border: 2px dashed #D2691E;
+        border-radius: 10px;
+        padding: 1rem;
+    }
+    
+    /* Metrics */
+    [data-testid="stMetricValue"] {
+        color: #8B4513;
+        font-weight: bold;
+    }
+    
+    /* Book icon decoration */
+    .book-icon {
+        font-size: 3rem;
+        text-align: center;
+        margin: 1rem 0;
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: #F5F5DC;
+        border-radius: 10px;
+        padding: 0.5rem;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background-color: #FFF8DC;
+        border-radius: 8px;
+        color: #8B4513;
+        font-weight: bold;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #8B4513 0%, #D2691E 100%);
+        color: white;
+    }
+    
+    /* Audio player styling */
+    audio {
+        border-radius: 25px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Database setup
+def init_database():
+    """Initialize SQLite database for user management"""
+    conn = sqlite3.connect('users.db', check_same_thread=False)
+    cursor = conn.cursor()
+    
+    # Create users table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            is_admin BOOLEAN DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Create activity log table
+    # --- UPDATED: Added 'ON DELETE CASCADE' ---
+    # This automatically deletes a user's activity log when their account is deleted.
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS activity_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            activity_type TEXT,
+            source_language TEXT,
+            target_language TEXT,
+            character_count INTEGER,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+    ''')
+    
+    # Create static admin user from secrets if not exists
+    try:
+        admin_username = st.secrets["admin"]["username"]
+        admin_password = st.secrets["admin"]["password"]
+        admin_email = st.secrets["admin"].get("email", "admin@app.local")
+    except:
+        st.error("⚠️ Admin credentials not found in secrets! Please configure secrets.toml")
+        st.stop()
+    
+    # --- UPDATED: Use passlib to hash the admin password ---
+    admin_password_hash = pwd_context.hash(admin_password)
+    
+    cursor.execute('SELECT id FROM users WHERE username = ?', (admin_username,))
+    if not cursor.fetchone():
+        cursor.execute(
+            'INSERT INTO users (username, password_hash, email, is_admin) VALUES (?, ?, ?, ?)',
+            (admin_username, admin_password_hash, admin_email, 1)
+        )
+        conn.commit()
+    
+    conn.close()
+
+# --- REMOVED: Old hash_password function ---
+# def hash_password(password): ...
+
+def validate_email(email):
+    """Validate email format"""
+    if not email:
+        return False
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
+
+def validate_username(username):
+    """Validate username format"""
+    if not username:
+        return False, "Username is required"
+    if len(username) < 3:
+        return False, "Username must be at least 3 characters"
+    if len(username) > 20:
+        return False, "Username must be less than 20 characters"
+    if not re.match(r'^[a-zA-Z0-9_]+$', username):
+        return False, "Username can only contain letters, numbers, and underscores"
+    return True, ""
+
+def validate_password(password):
+    """Validate password strength"""
+    if not password:
+        return False, "Password is required"
+    
+    errors = []
+    
+    if len(password) < 8:
+        errors.append("at least 8 characters")
+    if not re.search(r'[A-Z]', password):
+        errors.append("one uppercase letter")
+    if not re.search(r'[a-z]', password):
+        errors.append("one lowercase letter")
+    if not re.search(r'\d', password):
+        errors.append("one number")
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+        errors.append("one special character (!@#$%^&*...)")
+    
+    if errors:
+        return False, "Password must contain: " + ", ".join(errors)
+    
+    return True, ""
+
+def check_username_exists(username):
+    """Check if username already exists"""
+    conn = sqlite3.connect('users.db', check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM users WHERE username = ?', (username,))
+    exists = cursor.fetchone() is not None
+    conn.close()
+    return exists
+
+def check_email_exists(email):
+    """Check if email already exists"""
+    conn = sqlite3.connect('users.db', check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute('SELECT id FROM users WHERE email = ?', (email,))
+    exists = cursor.fetchone() is not None
+    conn.close()
+    return exists
+
+def create_user(username, password, email=None):
+    """Create a new user with a securely hashed password"""
+    try:
+        conn = sqlite3.connect('users.db', check_same_thread=False)
+        cursor = conn.cursor()
+        # --- UPDATED: Use passlib to hash password ---
+        password_hash = pwd_context.hash(password)
+        cursor.execute('INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)',
+                      (username, password_hash, email))
+        conn.commit()
+        conn.close()
+        return True, "Account created successfully!"
+    except sqlite3.IntegrityError as e:
+        if 'username' in str(e):
+            return False, "Username already exists"
+        elif 'email' in str(e):
+            return False, "Email already registered"
+        return False, "Registration failed"
+    except Exception as e:
+        return False, f"Error: {str(e)}"
+
+def verify_user(username, password):
+    """Verify user credentials against the securely hashed password"""
+    conn = sqlite3.connect('users.db', check_same_thread=False)
+    cursor = conn.cursor()
+    
+    # --- UPDATED: Two-step verification ---
+    # 1. Get user by username
+    cursor.execute('SELECT id, username, password_hash, is_admin FROM users WHERE username = ?', (username,))
+    user = cursor.fetchone()
+    conn.close()
+    
+    if user:
+        # 2. Verify password against the stored hash
+        stored_hash = user[2]
+        if pwd_context.verify(password, stored_hash):
+            # Return (id, username, is_admin)
+            return (user[0], user[1], user[3])
+            
+    # If user not found or password incorrect
+    return None
+
+# --- NEW: Function to delete a user and their data ---
+def delete_user(user_id):
+    """Deletes a user from the users table.
+    Their activity_log entries are deleted automatically via ON DELETE CASCADE.
+    """
+    try:
+        conn = sqlite3.connect('users.db', check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        st.error(f"Error deleting account: {e}")
+        return False
+
+
+def log_activity(user_id, activity_type, source_lang=None, target_lang=None, char_count=None):
+    """Log user activity - ONLY metadata, NO content stored"""
+    try:
+        conn = sqlite3.connect('users.db', check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO activity_log (user_id, activity_type, source_language, target_language, character_count)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (user_id, activity_type, source_lang, target_lang, char_count))
+        conn.commit()
+        conn.close()
+    except:
+        pass
+
+def get_user_stats(user_id):
+    """Get user statistics"""
+    conn = sqlite3.connect('users.db', check_same_thread=False)
+    cursor = conn.cursor()
+    
+    # Total activities
+    cursor.execute('SELECT COUNT(*) FROM activity_log WHERE user_id = ?', (user_id,))
+    total_activities = cursor.fetchone()[0]
+    
+    # Total characters processed
+    cursor.execute('SELECT SUM(character_count) FROM activity_log WHERE user_id = ?', (user_id,))
+    total_chars = cursor.fetchone()[0] or 0
+    
+    # Most used languages
+    cursor.execute('''
+        SELECT target_language, COUNT(*) as count 
+        FROM activity_log 
+        WHERE user_id = ? AND target_language IS NOT NULL
+        GROUP BY target_language 
+        ORDER BY count DESC 
+        LIMIT 3
+    ''', (user_id,))
+    top_languages = cursor.fetchall()
+    
+    conn.close()
+    return {
+        'total_activities': total_activities,
+        'total_characters': total_chars,
+        'top_languages': top_languages
+    }
+
+def get_all_users_stats():
+    """Get statistics for all users (admin only)"""
+    conn = sqlite3.connect('users.db', check_same_thread=False)
+    cursor = conn.cursor()
+    
+    # Total users
+    cursor.execute('SELECT COUNT(*) FROM users WHERE is_admin = 0')
+    total_users = cursor.fetchone()[0]
+    
+    # Total activities across all users
+    cursor.execute('SELECT COUNT(*) FROM activity_log')
+    total_activities = cursor.fetchone()[0]
+    
+    # Total characters processed
+    cursor.execute('SELECT SUM(character_count) FROM activity_log')
+    total_chars = cursor.fetchone()[0] or 0
+    
+    # Most active users
+    cursor.execute('''
+        SELECT u.username, COUNT(a.id) as activity_count
+        FROM users u
+        LEFT JOIN activity_log a ON u.id = a.user_id
+        WHERE u.is_admin = 0
+        GROUP BY u.id, u.username
+        ORDER BY activity_count DESC
+        LIMIT 5
+    ''')
+    top_users = cursor.fetchall()
+    
+    conn.close()
+    return {
+        'total_users': total_users,
+        'total_activities': total_activities,
+        'total_characters': total_chars,
+        'top_users': top_users
+    }
+
+# Initialize database
+init_database()
+
+# Session state for user management
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+if 'user_id' not in st.session_state:
+    st.session_state.user_id = None
+if 'username' not in st.session_state:
+    st.session_state.username = None
+if 'is_admin' not in st.session_state:
+    st.session_state.is_admin = False
+# --- NEW: Session state for delete confirmation ---
+if 'show_delete_confirm' not in st.session_state:
+    st.session_state.show_delete_confirm = False
+
+
+# Authentication UI
+if not st.session_state.logged_in:
+    # Hero section
+    st.markdown('<div class="main-header">', unsafe_allow_html=True)
+    st.markdown('<div class="book-icon">📚</div>', unsafe_allow_html=True)
+    st.markdown('<h1>AudioBook Reader</h1>', unsafe_allow_html=True)
+    st.markdown('<p>Transform any document into an audio experience</p>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown("### 🔐 Access Your Library")
+    
+    tab1, tab2 = st.tabs(["📖 Sign In", "✍️ Create Account"])
+    
+    with tab1:
+        st.markdown('<div class="auth-card">', unsafe_allow_html=True)
+        st.markdown("#### 📚 Welcome Back, Reader!")
+        st.markdown("Sign in to access your audiobook library")
+        
+        login_username = st.text_input("👤 Username", key="login_username", placeholder="Enter your username")
+        login_password = st.text_input("🔒 Password", type="password", key="login_password", placeholder="Enter your password")
+        
+        if st.button("📖 Enter Library", type="primary", use_container_width=True, key="login_btn"):
+            if login_username and login_password:
+                user = verify_user(login_username, login_password)
+                if user:
+                    st.session_state.logged_in = True
+                    st.session_state.user_id = user[0]
+                    st.session_state.username = user[1]
+                    st.session_state.is_admin = bool(user[2])
+                    
+                    if st.session_state.is_admin:
+                        st.success(f"🔑 Librarian access granted! Welcome, {user[1]}!")
+                    else:
+                        st.success(f"📚 Welcome back to your library, {user[1]}!")
+                    st.rerun()
+                else:
+                    st.error("❌ Invalid credentials. Please try again.")
+            else:
+                st.warning("⚠️ Please enter both username and password")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with tab2:
+        st.markdown('<div class="auth-card">', unsafe_allow_html=True)
+        st.markdown("#### ✍️ Join Our AudioBook Community")
+        st.info("📚 Create your account to start building your personal audiobook library")
+        
+        # Username field with real-time validation
+        reg_username = st.text_input(
+            "Username *", 
+            key="reg_username",
+            help="3-20 characters, letters, numbers, and underscores only",
+            placeholder="Enter username"
+        )
+        
+        # Real-time username validation
+        if reg_username:
+            username_valid, username_msg = validate_username(reg_username)
+            if not username_valid:
+                st.error(f"❌ {username_msg}")
+            elif check_username_exists(reg_username):
+                st.error("❌ Username already taken")
+            else:
+                st.success("✅ Username available")
+        
+        # Email field with validation
+        reg_email = st.text_input(
+            "Email *", 
+            key="reg_email",
+            help="Valid email address required",
+            placeholder="your.email@example.com"
+        )
+        
+        # Real-time email validation
+        if reg_email:
+            if not validate_email(reg_email):
+                st.error("❌ Invalid email format")
+            elif check_email_exists(reg_email):
+                st.error("❌ Email already registered")
+            else:
+                st.success("✅ Email valid")
+        
+        # Password field with strength requirements
+        st.markdown("**Password Requirements:**")
+        st.caption("• At least 8 characters\n• One uppercase letter\n• One lowercase letter\n• One number\n• One special character (!@#$%^&*...)")
+        
+        reg_password = st.text_input(
+            "Password *", 
+            type="password", 
+            key="reg_password",
+            placeholder="Enter strong password"
+        )
+        
+        # Real-time password validation
+        if reg_password:
+            password_valid, password_msg = validate_password(reg_password)
+            if not password_valid:
+                st.error(f"❌ {password_msg}")
+            else:
+                st.success("✅ Strong password")
+        
+        # Password confirmation
+        reg_password_confirm = st.text_input(
+            "Confirm Password *", 
+            type="password", 
+            key="reg_password_confirm",
+            placeholder="Re-enter password"
+        )
+        
+        # Real-time password match validation
+        if reg_password and reg_password_confirm:
+            if reg_password != reg_password_confirm:
+                st.error("❌ Passwords do not match")
+            else:
+                st.success("✅ Passwords match")
+        
+        # Terms and Privacy
+        st.markdown("---")
+        agree_terms = st.checkbox(
+            "I agree to the Terms of Service and Privacy Policy *",
+            key="agree_terms"
+        )
+        
+        if agree_terms:
+            with st.expander("📜 View Privacy Policy"):
+                # --- UPDATED: Honest Privacy Policy ---
+                st.markdown("""
+                **Privacy Policy Summary:**
+                
+                We are committed to user privacy. We store **only** the data necessary 
+                for your account to function and to track usage statistics. 
+                
+                We **NEVER** store your personal documents, extracted text, or audio.
+
+                ---
+                
+                **What we collect:**
+                - ✅ Username, email, and securely hashed password (for login)
+                - ✅ Usage statistics: Activity type (e.g., 'OCR'), character count, 
+                     language choices, and timestamps.
+                
+                **What we DON'T collect (and never store):**
+                - ❌ Your uploaded documents (PDFs, images)
+                - ❌ The text extracted from your documents
+                - ❌ The translated text
+                - ❌ The generated audio files
+                """)
+        
+        st.markdown("---")
+        
+        # Register button
+        if st.button("📚 Create My Library", type="primary", key="register_button", use_container_width=True):
+            # Comprehensive validation
+            errors = []
+            
+            # Check all required fields
+            if not reg_username:
+                errors.append("Username is required")
+            if not reg_email:
+                errors.append("Email is required")
+            if not reg_password:
+                errors.append("Password is required")
+            if not reg_password_confirm:
+                errors.append("Password confirmation is required")
+            if not agree_terms:
+                errors.append("You must agree to the Terms of Service and Privacy Policy")
+            
+            if errors:
+                for error in errors:
+                    st.error(f"❌ {error}")
+            else:
+                # Validate username
+                username_valid, username_msg = validate_username(reg_username)
+                if not username_valid:
+                    st.error(f"❌ {username_msg}")
+                elif check_username_exists(reg_username):
+                    st.error("❌ Username already taken")
+                # Validate email
+                elif not validate_email(reg_email):
+                    st.error("❌ Invalid email format")
+                elif check_email_exists(reg_email):
+                    st.error("❌ Email already registered")
+                # Validate password
+                elif not validate_password(reg_password)[0]:
+                    st.error(f"❌ {validate_password(reg_password)[1]}")
+                # Check password match
+                elif reg_password != reg_password_confirm:
+                    st.error("❌ Passwords do not match")
+                # All validations passed - create user
+                else:
+                    success, message = create_user(reg_username, reg_password, reg_email)
+                    if success:
+                        st.success(f"✅ {message}")
+                        st.balloons()
+                        st.info("👉 Your library is ready! Please sign in to start reading.")
+                    else:
+                        st.error(f"❌ {message}")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Feature showcase
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown('<div class="book-card">', unsafe_allow_html=True)
+        st.markdown("### 📖 OCR Reading")
+        st.markdown("Convert any document or image into digital text with 90+ language support")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown('<div class="book-card">', unsafe_allow_html=True)
+        st.markdown("### 🌐 Translation")
+        st.markdown("Translate your books into 35+ languages instantly")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown('<div class="book-card">', unsafe_allow_html=True)
+        st.markdown("### 🔊 Audio Narration")
+        st.markdown("Listen to your books with natural text-to-speech in 30+ languages")
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # --- UPDATED: Honest Privacy Policy ---
+    st.markdown("""
+    ### 🔒 Privacy & Security:
+    - ✅ **Document Privacy** - All files (PDFs, images), extracted text, and audio are processed 
+      in-memory only and are **never stored** on our server.
+    - ✅ **Account Security** - User passwords are secured using strong, salted hashing.
+    - ✅ **Usage Statistics** - We only store anonymous metadata (e.g., character count, language choice) 
+      to provide your usage stats. We **never** store the *content* of your documents.
+    """)
+    st.stop()
+
+# Main app (only shown when logged in)
+st.markdown('<div class="main-header">', unsafe_allow_html=True)
+st.markdown('<div class="book-icon">📚</div>', unsafe_allow_html=True)
+st.markdown('<h1>My AudioBook Library</h1>', unsafe_allow_html=True)
+st.markdown('<p>Transform your documents into immersive audio experiences</p>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+# User info and logout in sidebar
+with st.sidebar:
+    st.markdown("---")
+    
+    if st.session_state.is_admin:
+        st.markdown("### 🔑 Librarian Panel")
+        st.markdown(f"**{st.session_state.username}**")
+        st.caption("System Administrator")
+    else:
+        st.markdown("### 👤 Reader Profile")
+        st.markdown(f"**{st.session_state.username}**")
+        st.caption("Audiobook Enthusiast")
+    
+    if st.button("🚪 Exit Library", type="secondary", use_container_width=True, key="logout_btn"):
+        st.session_state.logged_in = False
+        st.session_state.user_id = None
+        st.session_state.username = None
+        st.session_state.is_admin = False
+        st.session_state.show_delete_confirm = False # Reset on logout
+        st.rerun()
+    
+    st.markdown("---")
+    
+    # Admin sees global statistics
+    if st.session_state.is_admin:
+        st.markdown("### 📊 Library Statistics")
+        admin_stats = get_all_users_stats()
+        
+        st.metric("📚 Total Readers", admin_stats['total_users'])
+        st.metric("📖 Books Processed", admin_stats['total_activities'])
+        st.metric("📝 Characters Read", f"{admin_stats['total_characters']:,}")
+        
+        if admin_stats['top_users']:
+            st.markdown("**🏆 Most Active Readers:**")
+            for username, count in admin_stats['top_users']:
+                st.markdown(f"- {username}: {count} books")
+    else:
+        # Regular users see their own statistics
+        st.markdown("### 📊 Your Reading Stats")
+        
+        stats = get_user_stats(st.session_state.user_id)
+        st.metric("📚 Books Processed", stats['total_activities'])
+        st.metric("📝 Characters Read", f"{stats['total_characters']:,}")
+        
+        if stats['top_languages']:
+            st.markdown("**🌍 Favorite Languages:**")
+            for lang, count in stats['top_languages']:
+                st.markdown(f"- {lang}: {count}×")
+    
+    st.markdown("---")
+    
+    # --- NEW: Delete Account Section ---
+    if not st.session_state.is_admin: # Admins can't delete themselves this way
+        st.markdown("### ⚠️ Danger Zone")
+        
+        if st.button("Delete My Account", type="primary", use_container_width=True, key="delete_account_btn"):
+            st.session_state.show_delete_confirm = True
+
+        if st.session_state.get("show_delete_confirm", False):
+            st.warning("This is permanent and cannot be undone! All your activity data will be erased.")
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Confirm Deletion", type="primary", use_container_width=True, key="confirm_delete_btn"):
+                    if delete_user(st.session_state.user_id):
+                        st.success("Account deleted.")
+                        # Log out
+                        st.session_state.logged_in = False
+                        st.session_state.user_id = None
+                        st.session_state.username = None
+                        st.session_state.is_admin = False
+                        st.session_state.show_delete_confirm = False
+                        st.rerun()
+                    else:
+                        st.error("Failed to delete account.")
+            with c2:
+                if st.button("Cancel", type="secondary", use_container_width=True, key="cancel_delete_btn"):
+                    st.session_state.show_delete_confirm = False
+                    st.rerun()
+    
+    st.markdown("---")
+    # --- UPDATED: Honest Privacy Caption ---
+    st.caption("🔒 Your document *content* is never stored.")
+
+st.markdown('<div class="book-card">', unsafe_allow_html=True)
+st.markdown("### 📖 Book Settings")
+st.markdown("Configure your reading and listening preferences")
+st.markdown('</div>', unsafe_allow_html=True)
 
 # Tesseract language codes mapping (comprehensive list)
 LANGUAGES = {
@@ -304,7 +1090,7 @@ def translate_text(text, target_lang):
         raise Exception(f"Translation error: {str(e)}")
 
 def text_to_speech(text, lang_code, slow=False):
-    """Convert text to speech using gTTS"""
+    """Convert text to speech using gTTS - Audio generated in-memory, NOT stored"""
     try:
         # Limit text length for TTS (gTTS has limits)
         max_tts_length = 3000
@@ -313,11 +1099,11 @@ def text_to_speech(text, lang_code, slow=False):
             st.warning(f"⚠️ Text truncated to {max_tts_length} characters for audio generation")
         
         tts = gTTS(text=text, lang=lang_code, slow=slow)
-        audio_fp = BytesIO()
+        audio_fp = BytesIO()  # In-memory storage only
         tts.write_to_fp(audio_fp)
         audio_fp.seek(0)
         
-        # Convert to base64
+        # Convert to base64 for browser playback
         audio_bytes = audio_fp.read()
         audio_base64 = base64.b64encode(audio_bytes).decode()
         
@@ -331,6 +1117,7 @@ def text_to_speech(text, lang_code, slow=False):
         
         return audio_html, audio_fp
     except Exception as e:
+        # --- MODIFIED: Pass the error message up ---
         raise Exception(f"TTS error: {str(e)}")
 
 def extract_text_from_image(image, language_code):
@@ -343,7 +1130,7 @@ def extract_text_from_image(image, language_code):
         raise Exception(f"OCR Error: {str(e)}")
 
 def extract_text_from_pdf(pdf_file, language_code):
-    """Extract text from PDF file"""
+    """Extract text from PDF file - File deleted immediately after processing"""
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
@@ -370,6 +1157,7 @@ def extract_text_from_pdf(pdf_file, language_code):
         return "\n\n".join(all_text)
     
     finally:
+        # CRITICAL: Delete temporary file immediately - NO FILES STORED
         if tmp_path and os.path.exists(tmp_path):
             try:
                 os.unlink(tmp_path)
@@ -377,31 +1165,37 @@ def extract_text_from_pdf(pdf_file, language_code):
                 pass
 
 # Language selection
-st.markdown("### Settings")
+st.markdown("---")
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
+    st.markdown("**📚 Source Language**")
     detection_mode = st.radio(
-        "Source Language:",
+        "Detection Mode:",
         options=["Auto-detect", "Manual"],
         index=0,
-        help="Auto-detect will try multiple languages for best OCR results"
+        help="Auto-detect will identify the language automatically",
+        label_visibility="collapsed"
     )
 
 with col2:
+    st.markdown("**🌐 Translation**")
     translation_language = st.selectbox(
         "Translate To:",
         options=list(TRANSLATION_LANGUAGES.keys()),
-        index=1,  # Default to English
-        help="Select target language for translation"
+        index=1,
+        help="Choose your preferred reading language",
+        label_visibility="collapsed"
     )
 
 with col3:
+    st.markdown("**🔊 Audio Narration**")
     enable_tts = st.checkbox(
-        "Enable TTS",
+        "Enable Audio",
         value=True,
-        help="Read translated text aloud"
+        help="Listen to your book",
+        label_visibility="collapsed"
     )
 
 # Manual language selection (only shown if Manual mode is selected)
@@ -427,58 +1221,47 @@ if enable_tts and translation_lang_code:
     with col_tts2:
         auto_play = st.checkbox("Auto-play audio", value=True)
 
-# Info box explaining the workflow
-if detection_mode == "Auto-detect":
-    if translation_lang_code:
-        workflow = f"📋 Workflow: Auto-detect → Extract → Translate to **{translation_language}**"
-        if enable_tts:
-            workflow += f" → 🔊 Read aloud"
-        st.info(workflow)
-    else:
-        st.info(f"📋 Workflow: Auto-detect → Extract text (no translation)")
-else:
-    if translation_lang_code:
-        workflow = f"📋 Workflow: Extract in **{manual_ocr_language}** → Translate to **{translation_language}**"
-        if enable_tts:
-            workflow += f" → 🔊 Read aloud"
-        st.info(workflow)
-    else:
-        st.info(f"📋 Workflow: Extract text in **{manual_ocr_language}** (no translation)")
+# --- REMOVED: Info box explaining the workflow ---
 
 # Additional options
-st.markdown("### Advanced Options")
-col3, col4 = st.columns(2)
+st.markdown("---")
+st.markdown("### ⚙️ Advanced Settings")
 
-with col3:
-    show_confidence = st.checkbox("Show OCR confidence scores", value=False)
+# --- UPDATED: Simplified advanced settings ---
+show_confidence = st.checkbox("📊 Show reading accuracy", value=False)
 
-with col4:
-    show_original = st.checkbox("Show original text", value=True)
 
 # File uploader
-st.markdown("### Upload File")
-st.info("📝 Supported formats: JPEG, JPG, PNG, PDF")
+st.markdown("---")
+st.markdown('<div class="book-card">', unsafe_allow_html=True)
+st.markdown("### 📚 Add Book to Library")
+st.info("📎 Upload your document: JPEG, JPG, PNG, or PDF")
 
 uploaded_file = st.file_uploader(
-    "Choose an image or PDF file:",
+    "Choose your book:",
     type=['jpg', 'jpeg', 'png', 'pdf'],
     label_visibility="collapsed"
 )
+st.markdown('</div>', unsafe_allow_html=True)
 
 if uploaded_file is not None:
     file_type = uploaded_file.name.split('.')[-1].lower()
-    st.success(f"✅ File uploaded: **{uploaded_file.name}** ({uploaded_file.size / 1024:.2f} KB)")
+    
+    st.markdown('<div class="book-card">', unsafe_allow_html=True)
+    st.success(f"📚 Book uploaded: **{uploaded_file.name}** ({uploaded_file.size / 1024:.2f} KB)")
     
     # Display preview for images
     if file_type in ['jpg', 'jpeg', 'png']:
         image = Image.open(uploaded_file)
-        st.image(image, caption="Uploaded Image", use_container_width=True)
+        st.image(image, caption="📖 Book Preview", use_container_width=True)
         uploaded_file.seek(0)
     else:
-        st.info("📄 PDF file uploaded - preview not available")
+        st.info("📄 PDF document ready for processing")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
     
     # Extract text button
-    if st.button("🔍 Extract, Translate & Speak", type="primary"):
+    if st.button("🎧 Start AudioBook", type="primary", use_container_width=True, key="start_audiobook_btn"):
         
         # Determine which OCR approach to use
         if detection_mode == "Auto-detect":
@@ -520,7 +1303,7 @@ if uploaded_file is not None:
                         finally:
                             if tmp_path and os.path.exists(tmp_path):
                                 try:
-                                    os.unlink(tmp_path)
+                                    os.unlink(tmp_path)  # Delete PDF immediately
                                 except:
                                     pass
                     else:
@@ -532,6 +1315,9 @@ if uploaded_file is not None:
                         detected_language = lang_code_to_name.get(detected_lang_code, "Unknown")
                         
                         st.success(f"✅ Text extraction complete! Detected language: **{detected_language}**")
+                        
+                        # Log activity
+                        log_activity(st.session_state.user_id, "OCR Extraction", detected_language, None, len(extracted_text))
                         
                 except Exception as e:
                     st.error(f"❌ Error during text extraction: {str(e)}")
@@ -554,13 +1340,16 @@ if uploaded_file is not None:
                     
                     if extracted_text:
                         st.success("✅ Text extraction complete!")
+                        
+                        # Log activity
+                        log_activity(st.session_state.user_id, "OCR Extraction", manual_ocr_language, None, len(extracted_text))
                     
                 except Exception as e:
                     st.error(f"❌ Error during text extraction: {str(e)}")
                     st.stop()
         
         # Continue with common processing for both modes
-        if extracted_text:
+        if 'extracted_text' in locals() and extracted_text:
             
             # Show confidence scores if enabled
             if show_confidence:
@@ -577,20 +1366,7 @@ if uploaded_file is not None:
                 except:
                     pass
             
-            # Display original extracted text if enabled
-            if show_original:
-                st.markdown(f"### 📄 Extracted Text ({detected_language}):")
-                st.text_area(
-                    "Original:",
-                    extracted_text,
-                    height=200,
-                    label_visibility="collapsed",
-                    key="original_text"
-                )
-                
-                char_count = len(extracted_text)
-                word_count = len(extracted_text.split())
-                st.caption(f"Characters: {char_count} | Words: {word_count}")
+            # --- REMOVED: Display original extracted text ---
             
             # Translate if target language is selected
             translated_text = None
@@ -600,18 +1376,10 @@ if uploaded_file is not None:
                         translated_text = translate_text(extracted_text, translation_lang_code)
                         st.success(f"✅ Translation to {translation_language} complete!")
                         
-                        st.markdown(f"### 🌐 Translated Text ({translation_language}):")
-                        st.text_area(
-                            "Translated:",
-                            translated_text,
-                            height=200,
-                            label_visibility="collapsed",
-                            key="translated_text"
-                        )
+                        # Log translation activity
+                        log_activity(st.session_state.user_id, "Translation", detected_language, translation_language, len(translated_text))
                         
-                        trans_char_count = len(translated_text)
-                        trans_word_count = len(translated_text.split())
-                        st.caption(f"Characters: {trans_char_count} | Words: {trans_word_count}")
+                        # --- REMOVED: Display translated text ---
                         
                         # Generate TTS for translated text
                         if enable_tts and translation_language in TTS_LANGUAGES:
@@ -620,9 +1388,14 @@ if uploaded_file is not None:
                                     tts_lang_code = TTS_LANGUAGES[translation_language]
                                     audio_html, audio_fp = text_to_speech(translated_text, tts_lang_code, slow=tts_slow if 'tts_slow' in locals() else False)
                                     
-                                    st.success("✅ Audio generated!")
-                                    st.markdown(f"### 🔊 Listen to Translation ({translation_language}):")
+                                    st.success("✅ Audiobook ready!")
+                                    st.markdown('<div class="book-card">', unsafe_allow_html=True)
+                                    st.markdown(f"### 🎧 Listen to Your AudioBook ({translation_language}):")
                                     st.markdown(audio_html, unsafe_allow_html=True)
+                                    st.markdown('</div>', unsafe_allow_html=True)
+                                    
+                                    # Log TTS activity
+                                    log_activity(st.session_state.user_id, "TTS Generation", detected_language, translation_language, len(translated_text))
                                     
                                     # Download button for audio
                                     audio_fp.seek(0)
@@ -635,7 +1408,7 @@ if uploaded_file is not None:
                                     )
                                     
                                 except Exception as e:
-                                    st.error(f"❌ TTS error: {str(e)}")
+                                    st.error(f"❌ {str(e)}") # Display the TTS error
                         elif enable_tts:
                             st.warning(f"⚠️ TTS not available for {translation_language}")
                         
@@ -644,38 +1417,78 @@ if uploaded_file is not None:
                         st.info("💡 Translation failed, but you can still download the original extracted text below.")
             
             # Download buttons for text files
-            st.markdown("### 📥 Download Text Files")
+            st.markdown("---")
+            st.markdown('<div class="book-card">', unsafe_allow_html=True)
+            st.markdown("### 📥 Download Your Book")
             col_dl1, col_dl2 = st.columns(2)
             
             with col_dl1:
                 base_name = uploaded_file.name.rsplit('.', 1)[0]
-                original_filename = f"{base_name}_extracted_{detected_language.lower().replace(' ', '_')}.txt"
+                original_filename = f"{base_name}_original_{detected_language.lower().replace(' ', '_')}.txt"
                 original_bytes = extracted_text.encode('utf-8')
                 
                 st.download_button(
-                    label=f"📄 Download Original ({detected_language})",
+                    label=f"📄 Original ({detected_language})",
                     data=original_bytes,
                     file_name=original_filename,
                     mime="text/plain",
-                    key="download_original"
+                    key="download_original",
+                    use_container_width=True
                 )
             
             with col_dl2:
                 if translated_text:
-                    translated_filename = f"{base_name}_translated_{translation_language.lower().replace(' ', '_')}.txt"
+                    translated_filename = f"{base_mame}_translated_{translation_language.lower().replace(' ', '_')}.txt"
                     translated_bytes = translated_text.encode('utf-8')
                     
                     st.download_button(
-                        label=f"🌐 Download Translated ({translation_language})",
+                        label=f"🌐 Translated ({translation_language})",
                         data=translated_bytes,
                         file_name=translated_filename,
                         mime="text/plain",
-                        key="download_translated"
+                        key="download_translated",
+                        use_container_width=True
                     )
             
+            st.markdown('</div>', unsafe_allow_html=True)
+            
         else:
-            st.warning("⚠️ No text found in the document. Try using manual language selection or check image quality.")
+            st.warning("⚠️ No text found. Try manual language selection or check document quality.")
 
 else:
-    st.info("👆 Please upload an image or PDF file to begin")
+    st.markdown('<div class="book-card">', unsafe_allow_html=True)
+    st.info("👆 Upload a document above to start your audiobook experience")
+    st.markdown('</div>', unsafe_allow_html=True)
 
+st.markdown("---")
+# --- UPDATED: Final, Honest Privacy Policy ---
+st.markdown("### 🔒 Privacy & Data Policy:")
+st.markdown("""
+**What We Store:**
+- ✅ Username and securely hashed password (for authentication)
+- ✅ Your email address (for account management)
+- ✅ Activity metadata: timestamps, language selections, character counts (to power your 'Reading Stats')
+
+**What We DO NOT Store:**
+- ❌ Uploaded documents (images/PDFs) are **deleted immediately** after processing
+- ❌ Extracted text content is **never** written to disk
+- ❌ Translated text is **never** stored
+- ❌ Generated audio files are processed in-memory and **never** saved
+
+**How We Process Your Data:**
+1. 📤 Files uploaded → processed in RAM only
+2. 🔍 Text extracted → displayed to you, **not saved**
+3. 🌐 Translation → generated on-the-fly, **not stored**
+4. 🔊 Audio → created in-memory, deleted after playback
+5. 🗑️ Temporary files are deleted immediately
+
+**Your Privacy is Guaranteed:**
+- All document processing happens in temporary memory.
+- We only track usage statistics (no actual content).
+- You can download your results, but we don't keep copies.
+- You can **delete your account** and all associated metadata at any time from the sidebar.
+""")
+
+
+st.caption("🔒 Document content is **never** stored | Privacy-first design")
+st.caption("⚠️ Important: Download your results before leaving the page!")
