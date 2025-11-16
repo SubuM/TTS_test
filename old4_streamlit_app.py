@@ -16,164 +16,10 @@ import re
 
 # Page configuration
 st.set_page_config(
-    page_title="AudioBook Reader - OCR & TTS",
-    page_icon="📚",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="OCR Translator with TTS",
+    page_icon="📄",
+    layout="centered"
 )
-
-# Custom CSS for audiobook theme
-st.markdown("""
-<style>
-    /* Main theme colors - Book/Library inspired */
-    :root {
-        --primary-color: #8B4513;
-        --secondary-color: #D2691E;
-        --background-color: #F5F5DC;
-        --text-color: #2C1810;
-    }
-    
-    /* Header styling */
-    .main-header {
-        background: linear-gradient(135deg, #8B4513 0%, #D2691E 100%);
-        padding: 2rem;
-        border-radius: 15px;
-        margin-bottom: 2rem;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        text-align: center;
-    }
-    
-    .main-header h1 {
-        color: #FFF8DC;
-        font-family: 'Georgia', serif;
-        font-size: 2.5rem;
-        margin: 0;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-    }
-    
-    .main-header p {
-        color: #F5DEB3;
-        font-family: 'Georgia', serif;
-        font-size: 1.1rem;
-        margin-top: 0.5rem;
-    }
-    
-    /* Book card styling */
-    .book-card {
-        background: linear-gradient(145deg, #FFF8DC 0%, #F5F5DC 100%);
-        border-left: 8px solid #8B4513;
-        border-radius: 10px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    
-    /* Login/Register card */
-    .auth-card {
-        background: linear-gradient(145deg, #FAEBD7 0%, #FFF8DC 100%);
-        border-radius: 15px;
-        padding: 2rem;
-        box-shadow: 0 8px 16px rgba(0,0,0,0.2);
-        border: 2px solid #D2691E;
-    }
-    
-    /* Button styling */
-    .stButton>button {
-        background: linear-gradient(135deg, #8B4513 0%, #A0522D 100%);
-        color: white;
-        border: none;
-        border-radius: 25px;
-        padding: 0.5rem 2rem;
-        font-weight: bold;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-        transition: all 0.3s ease;
-    }
-    
-    .stButton>button:hover {
-        background: linear-gradient(135deg, #A0522D 0%, #8B4513 100%);
-        box-shadow: 0 6px 8px rgba(0,0,0,0.3);
-        transform: translateY(-2px);
-    }
-    
-    /* Text area styling */
-    .stTextArea textarea {
-        border: 2px solid #D2691E;
-        border-radius: 10px;
-        background: #FFFAF0;
-        font-family: 'Georgia', serif;
-        color: #2C1810;
-    }
-    
-    /* Sidebar styling */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #8B4513 0%, #A0522D 100%);
-    }
-    
-    [data-testid="stSidebar"] .element-container {
-        color: #FFF8DC;
-    }
-    
-    /* Info boxes */
-    .stInfo {
-        background-color: #F0E68C;
-        border-left: 5px solid #DAA520;
-        color: #2C1810;
-    }
-    
-    /* Success boxes */
-    .stSuccess {
-        background-color: #90EE90;
-        border-left: 5px solid #228B22;
-    }
-    
-    /* File uploader */
-    [data-testid="stFileUploader"] {
-        background: #FFF8DC;
-        border: 2px dashed #D2691E;
-        border-radius: 10px;
-        padding: 1rem;
-    }
-    
-    /* Metrics */
-    [data-testid="stMetricValue"] {
-        color: #8B4513;
-        font-weight: bold;
-    }
-    
-    /* Book icon decoration */
-    .book-icon {
-        font-size: 3rem;
-        text-align: center;
-        margin: 1rem 0;
-    }
-    
-    /* Tab styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: #F5F5DC;
-        border-radius: 10px;
-        padding: 0.5rem;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        background-color: #FFF8DC;
-        border-radius: 8px;
-        color: #8B4513;
-        font-weight: bold;
-    }
-    
-    .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #8B4513 0%, #D2691E 100%);
-        color: white;
-    }
-    
-    /* Audio player styling */
-    audio {
-        border-radius: 25px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-    }
-</style>
-""", unsafe_allow_html=True)
 
 # Database setup
 def init_database():
@@ -420,26 +266,17 @@ if 'is_admin' not in st.session_state:
 
 # Authentication UI
 if not st.session_state.logged_in:
-    # Hero section
-    st.markdown('<div class="main-header">', unsafe_allow_html=True)
-    st.markdown('<div class="book-icon">📚</div>', unsafe_allow_html=True)
-    st.markdown('<h1>AudioBook Reader</h1>', unsafe_allow_html=True)
-    st.markdown('<p>Transform any document into an audio experience</p>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.title("📄 OCR Translator with TTS")
+    st.markdown("### Welcome! Please login or register to continue")
     
-    st.markdown("### 🔐 Access Your Library")
-    
-    tab1, tab2 = st.tabs(["📖 Sign In", "✍️ Create Account"])
+    tab1, tab2 = st.tabs(["Login", "Register"])
     
     with tab1:
-        st.markdown('<div class="auth-card">', unsafe_allow_html=True)
-        st.markdown("#### 📚 Welcome Back, Reader!")
-        st.markdown("Sign in to access your audiobook library")
+        st.markdown("#### Login to your account")
+        login_username = st.text_input("Username", key="login_username")
+        login_password = st.text_input("Password", type="password", key="login_password")
         
-        login_username = st.text_input("👤 Username", key="login_username", placeholder="Enter your username")
-        login_password = st.text_input("🔒 Password", type="password", key="login_password", placeholder="Enter your password")
-        
-        if st.button("📖 Enter Library", type="primary", use_container_width=True):
+        if st.button("Login", type="primary"):
             if login_username and login_password:
                 user = verify_user(login_username, login_password)
                 if user:
@@ -449,21 +286,18 @@ if not st.session_state.logged_in:
                     st.session_state.is_admin = bool(user[2])
                     
                     if st.session_state.is_admin:
-                        st.success(f"🔑 Librarian access granted! Welcome, {user[1]}!")
+                        st.success(f"🔑 Admin access granted! Welcome, {user[1]}!")
                     else:
-                        st.success(f"📚 Welcome back to your library, {user[1]}!")
+                        st.success(f"Welcome back, {user[1]}!")
                     st.rerun()
                 else:
-                    st.error("❌ Invalid credentials. Please try again.")
+                    st.error("Invalid username or password")
             else:
-                st.warning("⚠️ Please enter both username and password")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
+                st.warning("Please enter both username and password")
     
     with tab2:
-        st.markdown('<div class="auth-card">', unsafe_allow_html=True)
-        st.markdown("#### ✍️ Join Our AudioBook Community")
-        st.info("📚 Create your account to start building your personal audiobook library")
+        st.markdown("#### Create a new account")
+        st.info("📋 Please fill out all required fields to create your account")
         
         # Username field with real-time validation
         reg_username = st.text_input(
@@ -566,7 +400,7 @@ if not st.session_state.logged_in:
         st.markdown("---")
         
         # Register button
-        if st.button("📚 Create My Library", type="primary", key="register_button", use_container_width=True):
+        if st.button("Register", type="primary", key="register_button"):
             # Comprehensive validation
             errors = []
             
@@ -609,68 +443,40 @@ if not st.session_state.logged_in:
                     if success:
                         st.success(f"✅ {message}")
                         st.balloons()
-                        st.info("👉 Your library is ready! Please sign in to start reading.")
+                        st.info("👉 Please go to the Login tab to sign in")
                     else:
                         st.error(f"❌ {message}")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
-    
-    # Feature showcase
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown('<div class="book-card">', unsafe_allow_html=True)
-        st.markdown("### 📖 OCR Reading")
-        st.markdown("Convert any document or image into digital text with 90+ language support")
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown('<div class="book-card">', unsafe_allow_html=True)
-        st.markdown("### 🌐 Translation")
-        st.markdown("Translate your books into 35+ languages instantly")
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown('<div class="book-card">', unsafe_allow_html=True)
-        st.markdown("### 🔊 Audio Narration")
-        st.markdown("Listen to your books with natural text-to-speech in 30+ languages")
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
     st.markdown("""
+    ### Features:
+    - 🔍 OCR text extraction from images and PDFs
+    - 🌐 Translation to 35+ languages
+    - 🔊 Text-to-speech in 30+ languages
+    - 📊 Track your usage statistics
+    - 💾 All your activities are logged
+    
     ### 🔒 Privacy & Security:
     - ✅ **No documents stored** - All files processed in-memory only
-    - ✅ **No text content saved** - Only usage statistics
-    - ✅ **No audio files stored** - Generated on-demand
+    - ✅ **No text content saved** - Only usage statistics (character count, languages)
+    - ✅ **No audio files stored** - Generated on-demand and discarded
     - ✅ **Secure passwords** - Hashed with SHA256
-    - ✅ **Temporary processing** - Files deleted immediately
+    - ✅ **Temporary processing** - Files deleted immediately after use
     """)
     st.stop()
 
 # Main app (only shown when logged in)
-st.markdown('<div class="main-header">', unsafe_allow_html=True)
-st.markdown('<div class="book-icon">📚</div>', unsafe_allow_html=True)
-st.markdown('<h1>My AudioBook Library</h1>', unsafe_allow_html=True)
-st.markdown('<p>Transform your documents into immersive audio experiences</p>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
+st.title("📄 OCR Translator with TTS")
 
 # User info and logout in sidebar
 with st.sidebar:
-    st.markdown("---")
-    
     if st.session_state.is_admin:
-        st.markdown("### 🔑 Librarian Panel")
-        st.markdown(f"**{st.session_state.username}**")
-        st.caption("System Administrator")
+        st.markdown(f"### 🔑 Admin Panel")
+        st.markdown(f"**Logged in as:** {st.session_state.username}")
     else:
-        st.markdown("### 👤 Reader Profile")
-        st.markdown(f"**{st.session_state.username}**")
-        st.caption("Audiobook Enthusiast")
+        st.markdown(f"### 👤 Welcome, {st.session_state.username}!")
     
-    if st.button("🚪 Exit Library", type="secondary", use_container_width=True):
+    if st.button("Logout", type="secondary"):
         st.session_state.logged_in = False
         st.session_state.user_id = None
         st.session_state.username = None
@@ -681,38 +487,37 @@ with st.sidebar:
     
     # Admin sees global statistics
     if st.session_state.is_admin:
-        st.markdown("### 📊 Library Statistics")
+        st.markdown("### 📊 System Statistics")
         admin_stats = get_all_users_stats()
         
-        st.metric("📚 Total Readers", admin_stats['total_users'])
-        st.metric("📖 Books Processed", admin_stats['total_activities'])
-        st.metric("📝 Characters Read", f"{admin_stats['total_characters']:,}")
+        st.metric("Total Users", admin_stats['total_users'])
+        st.metric("Total Activities", admin_stats['total_activities'])
+        st.metric("Total Characters Processed", f"{admin_stats['total_characters']:,}")
         
         if admin_stats['top_users']:
-            st.markdown("**🏆 Most Active Readers:**")
+            st.markdown("**Most Active Users:**")
             for username, count in admin_stats['top_users']:
-                st.markdown(f"- {username}: {count} books")
+                st.markdown(f"- {username}: {count} activities")
     else:
         # Regular users see their own statistics
-        st.markdown("### 📊 Your Reading Stats")
+        st.markdown("### 📊 Your Statistics")
         
         stats = get_user_stats(st.session_state.user_id)
-        st.metric("📚 Books Processed", stats['total_activities'])
-        st.metric("📝 Characters Read", f"{stats['total_characters']:,}")
+        st.metric("Total Activities", stats['total_activities'])
+        st.metric("Characters Processed", f"{stats['total_characters']:,}")
         
         if stats['top_languages']:
-            st.markdown("**🌍 Favorite Languages:**")
+            st.markdown("**Most Used Languages:**")
             for lang, count in stats['top_languages']:
-                st.markdown(f"- {lang}: {count}×")
+                st.markdown(f"- {lang}: {count} times")
     
     st.markdown("---")
-    st.caption("🔒 Your privacy is protected")
-    st.caption("No content stored")
+    st.caption("All your data is stored locally and securely")
+    st.caption("🔒 Privacy: No documents or content stored - only usage stats")
 
-st.markdown('<div class="book-card">', unsafe_allow_html=True)
-st.markdown("### 📖 Book Settings")
-st.markdown("Configure your reading and listening preferences")
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("Extract text from images/PDFs, translate, and listen to the results")
+st.markdown("🔒 **Privacy Notice**: Your uploaded files and extracted text are processed in-memory only and never stored on our servers.")
+st.markdown("---")
 
 # Tesseract language codes mapping (comprehensive list)
 LANGUAGES = {
@@ -1071,37 +876,31 @@ def extract_text_from_pdf(pdf_file, language_code):
                 pass
 
 # Language selection
-st.markdown("---")
+st.markdown("### Settings")
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.markdown("**📚 Source Language**")
     detection_mode = st.radio(
-        "Detection Mode:",
+        "Source Language:",
         options=["Auto-detect", "Manual"],
         index=0,
-        help="Auto-detect will identify the language automatically",
-        label_visibility="collapsed"
+        help="Auto-detect will try multiple languages for best OCR results"
     )
 
 with col2:
-    st.markdown("**🌐 Translation**")
     translation_language = st.selectbox(
         "Translate To:",
         options=list(TRANSLATION_LANGUAGES.keys()),
-        index=1,
-        help="Choose your preferred reading language",
-        label_visibility="collapsed"
+        index=1,  # Default to English
+        help="Select target language for translation"
     )
 
 with col3:
-    st.markdown("**🔊 Audio Narration**")
     enable_tts = st.checkbox(
-        "Enable Audio",
+        "Enable TTS",
         value=True,
-        help="Listen to your book",
-        label_visibility="collapsed"
+        help="Read translated text aloud"
     )
 
 # Manual language selection (only shown if Manual mode is selected)
@@ -1128,68 +927,57 @@ if enable_tts and translation_lang_code:
         auto_play = st.checkbox("Auto-play audio", value=True)
 
 # Info box explaining the workflow
-st.markdown('<div class="book-card">', unsafe_allow_html=True)
 if detection_mode == "Auto-detect":
     if translation_lang_code:
-        workflow = f"📋 **Reading Flow:** Auto-detect → Extract text → Translate to **{translation_language}**"
+        workflow = f"📋 Workflow: Auto-detect → Extract → Translate to **{translation_language}**"
         if enable_tts:
-            workflow += f" → 🔊 Listen"
+            workflow += f" → 🔊 Read aloud"
         st.info(workflow)
     else:
-        st.info(f"📋 **Reading Flow:** Auto-detect → Extract text")
+        st.info(f"📋 Workflow: Auto-detect → Extract text (no translation)")
 else:
     if translation_lang_code:
-        workflow = f"📋 **Reading Flow:** Read in **{manual_ocr_language}** → Translate to **{translation_language}**"
+        workflow = f"📋 Workflow: Extract in **{manual_ocr_language}** → Translate to **{translation_language}**"
         if enable_tts:
-            workflow += f" → 🔊 Listen"
+            workflow += f" → 🔊 Read aloud"
         st.info(workflow)
     else:
-        st.info(f"📋 **Reading Flow:** Read in **{manual_ocr_language}**")
-st.markdown('</div>', unsafe_allow_html=True)
+        st.info(f"📋 Workflow: Extract text in **{manual_ocr_language}** (no translation)")
 
 # Additional options
-st.markdown("---")
-st.markdown("### ⚙️ Advanced Settings")
-
+st.markdown("### Advanced Options")
 col3, col4 = st.columns(2)
 
 with col3:
-    show_confidence = st.checkbox("📊 Show reading accuracy", value=False)
+    show_confidence = st.checkbox("Show OCR confidence scores", value=False)
 
 with col4:
-    show_original = st.checkbox("📄 Show original text", value=True)
+    show_original = st.checkbox("Show original text", value=True)
 
 # File uploader
-st.markdown("---")
-st.markdown('<div class="book-card">', unsafe_allow_html=True)
-st.markdown("### 📚 Add Book to Library")
-st.info("📎 Upload your document: JPEG, JPG, PNG, or PDF")
+st.markdown("### Upload File")
+st.info("📝 Supported formats: JPEG, JPG, PNG, PDF")
 
 uploaded_file = st.file_uploader(
-    "Choose your book:",
+    "Choose an image or PDF file:",
     type=['jpg', 'jpeg', 'png', 'pdf'],
     label_visibility="collapsed"
 )
-st.markdown('</div>', unsafe_allow_html=True)
 
 if uploaded_file is not None:
     file_type = uploaded_file.name.split('.')[-1].lower()
-    
-    st.markdown('<div class="book-card">', unsafe_allow_html=True)
-    st.success(f"📚 Book uploaded: **{uploaded_file.name}** ({uploaded_file.size / 1024:.2f} KB)")
+    st.success(f"✅ File uploaded: **{uploaded_file.name}** ({uploaded_file.size / 1024:.2f} KB)")
     
     # Display preview for images
     if file_type in ['jpg', 'jpeg', 'png']:
         image = Image.open(uploaded_file)
-        st.image(image, caption="📖 Book Preview", use_container_width=True)
+        st.image(image, caption="Uploaded Image", use_container_width=True)
         uploaded_file.seek(0)
     else:
-        st.info("📄 PDF document ready for processing")
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+        st.info("📄 PDF file uploaded - preview not available")
     
     # Extract text button
-    if st.button("🎧 Start AudioBook", type="primary", use_container_width=True):
+    if st.button("🔍 Extract, Translate & Speak", type="primary"):
         
         # Determine which OCR approach to use
         if detection_mode == "Auto-detect":
@@ -1296,8 +1084,7 @@ if uploaded_file is not None:
             
             # Display original extracted text if enabled
             if show_original:
-                st.markdown('<div class="book-card">', unsafe_allow_html=True)
-                st.markdown(f"### 📖 Original Text ({detected_language}):")
+                st.markdown(f"### 📄 Extracted Text ({detected_language}):")
                 st.text_area(
                     "Original:",
                     extracted_text,
@@ -1308,8 +1095,7 @@ if uploaded_file is not None:
                 
                 char_count = len(extracted_text)
                 word_count = len(extracted_text.split())
-                st.caption(f"📝 {word_count:,} words | {char_count:,} characters")
-                st.markdown('</div>', unsafe_allow_html=True)
+                st.caption(f"Characters: {char_count} | Words: {word_count}")
             
             # Translate if target language is selected
             translated_text = None
@@ -1322,7 +1108,6 @@ if uploaded_file is not None:
                         # Log translation activity
                         log_activity(st.session_state.user_id, "Translation", detected_language, translation_language, len(translated_text))
                         
-                        st.markdown('<div class="book-card">', unsafe_allow_html=True)
                         st.markdown(f"### 🌐 Translated Text ({translation_language}):")
                         st.text_area(
                             "Translated:",
@@ -1334,8 +1119,7 @@ if uploaded_file is not None:
                         
                         trans_char_count = len(translated_text)
                         trans_word_count = len(translated_text.split())
-                        st.caption(f"📝 {trans_word_count:,} words | {trans_char_count:,} characters")
-                        st.markdown('</div>', unsafe_allow_html=True)
+                        st.caption(f"Characters: {trans_char_count} | Words: {trans_word_count}")
                         
                         # Generate TTS for translated text
                         if enable_tts and translation_language in TTS_LANGUAGES:
@@ -1344,11 +1128,9 @@ if uploaded_file is not None:
                                     tts_lang_code = TTS_LANGUAGES[translation_language]
                                     audio_html, audio_fp = text_to_speech(translated_text, tts_lang_code, slow=tts_slow if 'tts_slow' in locals() else False)
                                     
-                                    st.success("✅ Audiobook ready!")
-                                    st.markdown('<div class="book-card">', unsafe_allow_html=True)
-                                    st.markdown(f"### 🎧 Listen to Your AudioBook ({translation_language}):")
+                                    st.success("✅ Audio generated!")
+                                    st.markdown(f"### 🔊 Listen to Translation ({translation_language}):")
                                     st.markdown(audio_html, unsafe_allow_html=True)
-                                    st.markdown('</div>', unsafe_allow_html=True)
                                     
                                     # Log TTS activity
                                     log_activity(st.session_state.user_id, "TTS Generation", detected_language, translation_language, len(translated_text))
@@ -1373,23 +1155,20 @@ if uploaded_file is not None:
                         st.info("💡 Translation failed, but you can still download the original extracted text below.")
             
             # Download buttons for text files
-            st.markdown("---")
-            st.markdown('<div class="book-card">', unsafe_allow_html=True)
-            st.markdown("### 📥 Download Your Book")
+            st.markdown("### 📥 Download Text Files")
             col_dl1, col_dl2 = st.columns(2)
             
             with col_dl1:
                 base_name = uploaded_file.name.rsplit('.', 1)[0]
-                original_filename = f"{base_name}_original_{detected_language.lower().replace(' ', '_')}.txt"
+                original_filename = f"{base_name}_extracted_{detected_language.lower().replace(' ', '_')}.txt"
                 original_bytes = extracted_text.encode('utf-8')
                 
                 st.download_button(
-                    label=f"📄 Original ({detected_language})",
+                    label=f"📄 Download Original ({detected_language})",
                     data=original_bytes,
                     file_name=original_filename,
                     mime="text/plain",
-                    key="download_original",
-                    use_container_width=True
+                    key="download_original"
                 )
             
             with col_dl2:
@@ -1398,23 +1177,18 @@ if uploaded_file is not None:
                     translated_bytes = translated_text.encode('utf-8')
                     
                     st.download_button(
-                        label=f"🌐 Translated ({translation_language})",
+                        label=f"🌐 Download Translated ({translation_language})",
                         data=translated_bytes,
                         file_name=translated_filename,
                         mime="text/plain",
-                        key="download_translated",
-                        use_container_width=True
+                        key="download_translated"
                     )
             
-            st.markdown('</div>', unsafe_allow_html=True)
-            
         else:
-            st.warning("⚠️ No text found. Try manual language selection or check document quality.")
+            st.warning("⚠️ No text found in the document. Try using manual language selection or check image quality.")
 
 else:
-    st.markdown('<div class="book-card">', unsafe_allow_html=True)
-    st.info("👆 Upload a document above to start your audiobook experience")
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.info("👆 Please upload an image or PDF file to begin")
 
 st.markdown("---")
 st.markdown("### 🔒 Privacy & Data Policy:")
