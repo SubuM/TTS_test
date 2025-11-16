@@ -9,316 +9,16 @@ import langdetect
 from deep_translator import GoogleTranslator
 from gtts import gTTS
 import base64
-import sqlite3
-import hashlib
-from datetime import datetime
 
 # Page configuration
 st.set_page_config(
-    page_title="OCR Translator with TTS",
-    page_icon="📄",
+    page_title="Basic Audio Book",
+    page_icon="🔊📄 ",
     layout="centered"
 )
 
-# Database setup
-def init_database():
-    """Initialize SQLite database for user management"""
-    conn = sqlite3.connect('users.db', check_same_thread=False)
-    cursor = conn.cursor()
-    
-    # Create users table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            email TEXT,
-            is_admin BOOLEAN DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # Create activity log table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS activity_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            activity_type TEXT,
-            source_language TEXT,
-            target_language TEXT,
-            character_count INTEGER,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id)
-        )
-    ''')
-    
-    # Create static admin user from secrets if not exists
-    try:
-        admin_username = st.secrets["admin"]["username"]
-        admin_password = st.secrets["admin"]["password"]
-        admin_email = st.secrets["admin"].get("email", "admin@app.local")
-    except:
-        st.error("⚠️ Admin credentials not found in secrets! Please configure secrets.toml")
-        st.stop()
-    
-    admin_password_hash = hashlib.sha256(admin_password.encode()).hexdigest()
-    
-    cursor.execute('SELECT id FROM users WHERE username = ?', (admin_username,))
-    if not cursor.fetchone():
-        cursor.execute(
-            'INSERT INTO users (username, password_hash, email, is_admin) VALUES (?, ?, ?, ?)',
-            (admin_username, admin_password_hash, admin_email, 1)
-        )
-        conn.commit()
-    
-    conn.close()
-
-def hash_password(password):
-    """Hash password using SHA256"""
-    return hashlib.sha256(password.encode()).hexdigest()
-
-def create_user(username, password, email=None):
-    """Create a new user"""
-    try:
-        conn = sqlite3.connect('users.db', check_same_thread=False)
-        cursor = conn.cursor()
-        password_hash = hash_password(password)
-        cursor.execute('INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)',
-                      (username, password_hash, email))
-        conn.commit()
-        conn.close()
-        return True
-    except sqlite3.IntegrityError:
-        return False
-
-def verify_user(username, password):
-    """Verify user credentials"""
-    conn = sqlite3.connect('users.db', check_same_thread=False)
-    cursor = conn.cursor()
-    password_hash = hash_password(password)
-    cursor.execute('SELECT id, username, is_admin FROM users WHERE username = ? AND password_hash = ?',
-                  (username, password_hash))
-    user = cursor.fetchone()
-    conn.close()
-    return user
-
-def log_activity(user_id, activity_type, source_lang=None, target_lang=None, char_count=None):
-    """Log user activity - ONLY metadata, NO content stored"""
-    try:
-        conn = sqlite3.connect('users.db', check_same_thread=False)
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO activity_log (user_id, activity_type, source_language, target_language, character_count)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (user_id, activity_type, source_lang, target_lang, char_count))
-        conn.commit()
-        conn.close()
-    except:
-        pass
-
-def get_user_stats(user_id):
-    """Get user statistics"""
-    conn = sqlite3.connect('users.db', check_same_thread=False)
-    cursor = conn.cursor()
-    
-    # Total activities
-    cursor.execute('SELECT COUNT(*) FROM activity_log WHERE user_id = ?', (user_id,))
-    total_activities = cursor.fetchone()[0]
-    
-    # Total characters processed
-    cursor.execute('SELECT SUM(character_count) FROM activity_log WHERE user_id = ?', (user_id,))
-    total_chars = cursor.fetchone()[0] or 0
-    
-    # Most used languages
-    cursor.execute('''
-        SELECT target_language, COUNT(*) as count 
-        FROM activity_log 
-        WHERE user_id = ? AND target_language IS NOT NULL
-        GROUP BY target_language 
-        ORDER BY count DESC 
-        LIMIT 3
-    ''', (user_id,))
-    top_languages = cursor.fetchall()
-    
-    conn.close()
-    return {
-        'total_activities': total_activities,
-        'total_characters': total_chars,
-        'top_languages': top_languages
-    }
-
-def get_all_users_stats():
-    """Get statistics for all users (admin only)"""
-    conn = sqlite3.connect('users.db', check_same_thread=False)
-    cursor = conn.cursor()
-    
-    # Total users
-    cursor.execute('SELECT COUNT(*) FROM users WHERE is_admin = 0')
-    total_users = cursor.fetchone()[0]
-    
-    # Total activities across all users
-    cursor.execute('SELECT COUNT(*) FROM activity_log')
-    total_activities = cursor.fetchone()[0]
-    
-    # Total characters processed
-    cursor.execute('SELECT SUM(character_count) FROM activity_log')
-    total_chars = cursor.fetchone()[0] or 0
-    
-    # Most active users
-    cursor.execute('''
-        SELECT u.username, COUNT(a.id) as activity_count
-        FROM users u
-        LEFT JOIN activity_log a ON u.id = a.user_id
-        WHERE u.is_admin = 0
-        GROUP BY u.id, u.username
-        ORDER BY activity_count DESC
-        LIMIT 5
-    ''')
-    top_users = cursor.fetchall()
-    
-    conn.close()
-    return {
-        'total_users': total_users,
-        'total_activities': total_activities,
-        'total_characters': total_chars,
-        'top_users': top_users
-    }
-
-# Initialize database
-init_database()
-
-# Session state for user management
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-if 'user_id' not in st.session_state:
-    st.session_state.user_id = None
-if 'username' not in st.session_state:
-    st.session_state.username = None
-if 'is_admin' not in st.session_state:
-    st.session_state.is_admin = False
-
-# Authentication UI
-if not st.session_state.logged_in:
-    st.title("📄 OCR Translator with TTS")
-    st.markdown("### Welcome! Please login or register to continue")
-    
-    tab1, tab2 = st.tabs(["Login", "Register"])
-    
-    with tab1:
-        st.markdown("#### Login to your account")
-        login_username = st.text_input("Username", key="login_username")
-        login_password = st.text_input("Password", type="password", key="login_password")
-        
-        if st.button("Login", type="primary"):
-            if login_username and login_password:
-                user = verify_user(login_username, login_password)
-                if user:
-                    st.session_state.logged_in = True
-                    st.session_state.user_id = user[0]
-                    st.session_state.username = user[1]
-                    st.session_state.is_admin = bool(user[2])
-                    
-                    if st.session_state.is_admin:
-                        st.success(f"🔑 Admin access granted! Welcome, {user[1]}!")
-                    else:
-                        st.success(f"Welcome back, {user[1]}!")
-                    st.rerun()
-                else:
-                    st.error("Invalid username or password")
-            else:
-                st.warning("Please enter both username and password")
-    
-    with tab2:
-        st.markdown("#### Create a new account")
-        reg_username = st.text_input("Choose Username", key="reg_username")
-        reg_email = st.text_input("Email (optional)", key="reg_email")
-        reg_password = st.text_input("Choose Password", type="password", key="reg_password")
-        reg_password_confirm = st.text_input("Confirm Password", type="password", key="reg_password_confirm")
-        
-        if st.button("Register", type="primary"):
-            if reg_username and reg_password:
-                if reg_password != reg_password_confirm:
-                    st.error("Passwords do not match")
-                elif len(reg_password) < 6:
-                    st.error("Password must be at least 6 characters")
-                else:
-                    if create_user(reg_username, reg_password, reg_email):
-                        st.success("Account created successfully! Please login.")
-                    else:
-                        st.error("Username already exists")
-            else:
-                st.warning("Please enter username and password")
-    
-    st.markdown("---")
-    st.markdown("""
-    ### Features:
-    - 🔍 OCR text extraction from images and PDFs
-    - 🌐 Translation to 35+ languages
-    - 🔊 Text-to-speech in 30+ languages
-    - 📊 Track your usage statistics
-    - 💾 All your activities are logged
-    
-    ### 🔒 Privacy & Security:
-    - ✅ **No documents stored** - All files processed in-memory only
-    - ✅ **No text content saved** - Only usage statistics (character count, languages)
-    - ✅ **No audio files stored** - Generated on-demand and discarded
-    - ✅ **Secure passwords** - Hashed with SHA256
-    - ✅ **Temporary processing** - Files deleted immediately after use
-    """)
-    st.stop()
-
-# Main app (only shown when logged in)
-st.title("📄 OCR Translator with TTS")
-
-# User info and logout in sidebar
-with st.sidebar:
-    if st.session_state.is_admin:
-        st.markdown(f"### 🔑 Admin Panel")
-        st.markdown(f"**Logged in as:** {st.session_state.username}")
-    else:
-        st.markdown(f"### 👤 Welcome, {st.session_state.username}!")
-    
-    if st.button("Logout", type="secondary"):
-        st.session_state.logged_in = False
-        st.session_state.user_id = None
-        st.session_state.username = None
-        st.session_state.is_admin = False
-        st.rerun()
-    
-    st.markdown("---")
-    
-    # Admin sees global statistics
-    if st.session_state.is_admin:
-        st.markdown("### 📊 System Statistics")
-        admin_stats = get_all_users_stats()
-        
-        st.metric("Total Users", admin_stats['total_users'])
-        st.metric("Total Activities", admin_stats['total_activities'])
-        st.metric("Total Characters Processed", f"{admin_stats['total_characters']:,}")
-        
-        if admin_stats['top_users']:
-            st.markdown("**Most Active Users:**")
-            for username, count in admin_stats['top_users']:
-                st.markdown(f"- {username}: {count} activities")
-    else:
-        # Regular users see their own statistics
-        st.markdown("### 📊 Your Statistics")
-        
-        stats = get_user_stats(st.session_state.user_id)
-        st.metric("Total Activities", stats['total_activities'])
-        st.metric("Characters Processed", f"{stats['total_characters']:,}")
-        
-        if stats['top_languages']:
-            st.markdown("**Most Used Languages:**")
-            for lang, count in stats['top_languages']:
-                st.markdown(f"- {lang}: {count} times")
-    
-    st.markdown("---")
-    st.caption("All your data is stored locally and securely")
-    st.caption("🔒 Privacy: No documents or content stored - only usage stats")
-
+st.title("🔊📄 Basic Audio Book")
 st.markdown("Extract text from images/PDFs, translate, and listen to the results")
-st.markdown("🔒 **Privacy Notice**: Your uploaded files and extracted text are processed in-memory only and never stored on our servers.")
 st.markdown("---")
 
 # Tesseract language codes mapping (comprehensive list)
@@ -604,7 +304,7 @@ def translate_text(text, target_lang):
         raise Exception(f"Translation error: {str(e)}")
 
 def text_to_speech(text, lang_code, slow=False):
-    """Convert text to speech using gTTS - Audio generated in-memory, NOT stored"""
+    """Convert text to speech using gTTS"""
     try:
         # Limit text length for TTS (gTTS has limits)
         max_tts_length = 3000
@@ -613,11 +313,11 @@ def text_to_speech(text, lang_code, slow=False):
             st.warning(f"⚠️ Text truncated to {max_tts_length} characters for audio generation")
         
         tts = gTTS(text=text, lang=lang_code, slow=slow)
-        audio_fp = BytesIO()  # In-memory storage only
+        audio_fp = BytesIO()
         tts.write_to_fp(audio_fp)
         audio_fp.seek(0)
         
-        # Convert to base64 for browser playback
+        # Convert to base64
         audio_bytes = audio_fp.read()
         audio_base64 = base64.b64encode(audio_bytes).decode()
         
@@ -643,7 +343,7 @@ def extract_text_from_image(image, language_code):
         raise Exception(f"OCR Error: {str(e)}")
 
 def extract_text_from_pdf(pdf_file, language_code):
-    """Extract text from PDF file - File deleted immediately after processing"""
+    """Extract text from PDF file"""
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
@@ -670,7 +370,6 @@ def extract_text_from_pdf(pdf_file, language_code):
         return "\n\n".join(all_text)
     
     finally:
-        # CRITICAL: Delete temporary file immediately - NO FILES STORED
         if tmp_path and os.path.exists(tmp_path):
             try:
                 os.unlink(tmp_path)
@@ -821,7 +520,7 @@ if uploaded_file is not None:
                         finally:
                             if tmp_path and os.path.exists(tmp_path):
                                 try:
-                                    os.unlink(tmp_path)  # Delete PDF immediately
+                                    os.unlink(tmp_path)
                                 except:
                                     pass
                     else:
@@ -833,9 +532,6 @@ if uploaded_file is not None:
                         detected_language = lang_code_to_name.get(detected_lang_code, "Unknown")
                         
                         st.success(f"✅ Text extraction complete! Detected language: **{detected_language}**")
-                        
-                        # Log activity
-                        log_activity(st.session_state.user_id, "OCR Extraction", detected_language, None, len(extracted_text))
                         
                 except Exception as e:
                     st.error(f"❌ Error during text extraction: {str(e)}")
@@ -858,9 +554,6 @@ if uploaded_file is not None:
                     
                     if extracted_text:
                         st.success("✅ Text extraction complete!")
-                        
-                        # Log activity
-                        log_activity(st.session_state.user_id, "OCR Extraction", manual_ocr_language, None, len(extracted_text))
                     
                 except Exception as e:
                     st.error(f"❌ Error during text extraction: {str(e)}")
@@ -907,9 +600,6 @@ if uploaded_file is not None:
                         translated_text = translate_text(extracted_text, translation_lang_code)
                         st.success(f"✅ Translation to {translation_language} complete!")
                         
-                        # Log translation activity
-                        log_activity(st.session_state.user_id, "Translation", detected_language, translation_language, len(translated_text))
-                        
                         st.markdown(f"### 🌐 Translated Text ({translation_language}):")
                         st.text_area(
                             "Translated:",
@@ -933,9 +623,6 @@ if uploaded_file is not None:
                                     st.success("✅ Audio generated!")
                                     st.markdown(f"### 🔊 Listen to Translation ({translation_language}):")
                                     st.markdown(audio_html, unsafe_allow_html=True)
-                                    
-                                    # Log TTS activity
-                                    log_activity(st.session_state.user_id, "TTS Generation", detected_language, translation_language, len(translated_text))
                                     
                                     # Download button for audio
                                     audio_fp.seek(0)
@@ -992,33 +679,3 @@ if uploaded_file is not None:
 else:
     st.info("👆 Please upload an image or PDF file to begin")
 
-st.markdown("---")
-st.markdown("### 🔒 Privacy & Data Policy:")
-st.markdown("""
-**What We Store:**
-- ✅ Username and hashed password (for authentication)
-- ✅ Activity metadata: timestamps, language selections, character counts
-
-**What We DO NOT Store:**
-- ❌ Uploaded documents (images/PDFs)
-- ❌ Extracted text content
-- ❌ Translated text
-- ❌ Generated audio files
-- ❌ Any document content whatsoever
-
-**How We Process Your Data:**
-1. 📤 Files uploaded → processed in RAM only
-2. 🔍 Text extracted → displayed to you, never saved
-3. 🌐 Translation → generated on-the-fly, not stored
-4. 🔊 Audio → created in-memory, deleted after playback
-5. 🗑️ Temporary files deleted immediately after processing
-
-**Your Privacy is Guaranteed:**
-- All document processing happens in temporary memory
-- No content is written to disk (except temporary system files deleted immediately)
-- Only usage statistics tracked (no actual content)
-- You can download your results, but we don't keep copies
-""")
-
-st.caption("🔒 Zero data retention | Privacy-first design")
-st.caption("⚠️ Important: We do not store any document content. Download your results before leaving the page!")
