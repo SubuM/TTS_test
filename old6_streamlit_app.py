@@ -13,17 +13,17 @@ import sqlite3
 import hashlib  # Keep for admin hash comparison (or remove if not needed)
 import re
 from datetime import datetime
+import time
 
 # --- NEW: Import passlib for secure password hashing ---
 try:
     from passlib.context import CryptContext
 except ImportError:
-    st.error("Missing `passlib`! Please run `pip install passlib`")
+    st.error("Missing 'passlib'! Please run 'pip install passlib bcrypt'")
     st.stop()
 
-# --- Setup passlib context ---
-# --- UPDATED: Use sha512_crypt instead of bcrypt ---
-# This avoids the C-extension error on Streamlit Cloud
+# --- NEW: Setup passlib context ---
+# We will use bcrypt for all new and verified passwords
 pwd_context = CryptContext(schemes=["sha512_crypt"], deprecated="auto")
 
 
@@ -705,7 +705,7 @@ if not st.session_state.logged_in:
     ### 🔒 Privacy & Security:
     - ✅ **Document Privacy** - All files (PDFs, images), extracted text, and audio are processed 
       in-memory only and are **never stored** on our server.
-    - ✅ **Account Security** - User passwords are secured using strong, salted hashing.
+    - ✅ **Account Security** - User passwords are secured using **bcrypt**, a strong, salted hashing algorithm.
     - ✅ **Usage Statistics** - We only store anonymous metadata (e.g., character count, language choice) 
       to provide your usage stats. We **never** store the *content* of your documents.
     """)
@@ -802,10 +802,9 @@ with st.sidebar:
     # --- UPDATED: Honest Privacy Caption ---
     st.caption("🔒 Your document *content* is never stored.")
 
-st.markdown('<div class="book-card">', unsafe_allow_html=True)
-st.markdown("### 📖 Book Settings")
-st.markdown("Configure your reading and listening preferences")
-st.markdown('</div>', unsafe_allow_html=True)
+# ... (Rest of the app code: LANGUAGES, TRANSLATION_LANGUAGES, TTS_LANGUAGES, etc.) ...
+# ... (All the functions: detect_language_advanced, auto_detect_and_extract, etc.) ...
+# ... (The entire main app UI: File uploader, settings, etc.) ...
 
 # Tesseract language codes mapping (comprehensive list)
 LANGUAGES = {
@@ -1117,7 +1116,6 @@ def text_to_speech(text, lang_code, slow=False):
         
         return audio_html, audio_fp
     except Exception as e:
-        # --- MODIFIED: Pass the error message up ---
         raise Exception(f"TTS error: {str(e)}")
 
 def extract_text_from_image(image, language_code):
@@ -1163,6 +1161,11 @@ def extract_text_from_pdf(pdf_file, language_code):
                 os.unlink(tmp_path)
             except:
                 pass
+
+st.markdown('<div class="book-card">', unsafe_allow_html=True)
+st.markdown("### 📖 Book Settings")
+st.markdown("Configure your reading and listening preferences")
+st.markdown('</div>', unsafe_allow_html=True)
 
 # Language selection
 st.markdown("---")
@@ -1221,15 +1224,37 @@ if enable_tts and translation_lang_code:
     with col_tts2:
         auto_play = st.checkbox("Auto-play audio", value=True)
 
-# --- REMOVED: Info box explaining the workflow ---
+# Info box explaining the workflow
+st.markdown('<div class="book-card">', unsafe_allow_html=True)
+if detection_mode == "Auto-detect":
+    if translation_lang_code:
+        workflow = f"📋 **Reading Flow:** Auto-detect → Extract text → Translate to **{translation_language}**"
+        if enable_tts:
+            workflow += f" → 🔊 Listen"
+        st.info(workflow)
+    else:
+        st.info(f"📋 **Reading Flow:** Auto-detect → Extract text")
+else:
+    if translation_lang_code:
+        workflow = f"📋 **Reading Flow:** Read in **{manual_ocr_language}** → Translate to **{translation_language}**"
+        if enable_tts:
+            workflow += f" → 🔊 Listen"
+        st.info(workflow)
+    else:
+        st.info(f"📋 **Reading Flow:** Read in **{manual_ocr_language}**")
+st.markdown('</div>', unsafe_allow_html=True)
 
 # Additional options
 st.markdown("---")
 st.markdown("### ⚙️ Advanced Settings")
 
-# --- UPDATED: Simplified advanced settings ---
-show_confidence = st.checkbox("📊 Show reading accuracy", value=False)
+col3, col4 = st.columns(2)
 
+with col3:
+    show_confidence = st.checkbox("📊 Show reading accuracy", value=False)
+
+with col4:
+    show_original = st.checkbox("📄 Show original text", value=True)
 
 # File uploader
 st.markdown("---")
@@ -1366,7 +1391,22 @@ if uploaded_file is not None:
                 except:
                     pass
             
-            # --- REMOVED: Display original extracted text ---
+            # Display original extracted text if enabled
+            if show_original:
+                st.markdown('<div class="book-card">', unsafe_allow_html=True)
+                st.markdown(f"### 📖 Original Text ({detected_language}):")
+                st.text_area(
+                    "Original:",
+                    extracted_text,
+                    height=200,
+                    label_visibility="collapsed",
+                    key="original_text"
+                )
+                
+                char_count = len(extracted_text)
+                word_count = len(extracted_text.split())
+                st.caption(f"📝 {word_count:,} words | {char_count:,} characters")
+                st.markdown('</div>', unsafe_allow_html=True)
             
             # Translate if target language is selected
             translated_text = None
@@ -1379,7 +1419,20 @@ if uploaded_file is not None:
                         # Log translation activity
                         log_activity(st.session_state.user_id, "Translation", detected_language, translation_language, len(translated_text))
                         
-                        # --- REMOVED: Display translated text ---
+                        st.markdown('<div class="book-card">', unsafe_allow_html=True)
+                        st.markdown(f"### 🌐 Translated Text ({translation_language}):")
+                        st.text_area(
+                            "Translated:",
+                            translated_text,
+                            height=200,
+                            label_visibility="collapsed",
+                            key="translated_text"
+                        )
+                        
+                        trans_char_count = len(translated_text)
+                        trans_word_count = len(translated_text.split())
+                        st.caption(f"📝 {trans_word_count:,} words | {trans_char_count:,} characters")
+                        st.markdown('</div>', unsafe_allow_html=True)
                         
                         # Generate TTS for translated text
                         if enable_tts and translation_language in TTS_LANGUAGES:
@@ -1408,7 +1461,7 @@ if uploaded_file is not None:
                                     )
                                     
                                 except Exception as e:
-                                    st.error(f"❌ {str(e)}") # Display the TTS error
+                                    st.error(f"❌ TTS error: {str(e)}")
                         elif enable_tts:
                             st.warning(f"⚠️ TTS not available for {translation_language}")
                         
@@ -1438,7 +1491,7 @@ if uploaded_file is not None:
             
             with col_dl2:
                 if translated_text:
-                    translated_filename = f"{base_mame}_translated_{translation_language.lower().replace(' ', '_')}.txt"
+                    translated_filename = f"{base_name}_translated_{translation_language.lower().replace(' ', '_')}.txt"
                     translated_bytes = translated_text.encode('utf-8')
                     
                     st.download_button(
