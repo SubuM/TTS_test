@@ -23,7 +23,7 @@ except ImportError:
 
 # --- NEW: Setup passlib context ---
 # We will use bcrypt for all new and verified passwords
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["sha512_crypt"], deprecated="auto")
 
 
 # Page configuration

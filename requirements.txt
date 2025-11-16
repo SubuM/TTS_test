@@ -9,4 +9,3 @@ pdf2image
 langdetect
 deep-translator
 passlib
-bcrypt
