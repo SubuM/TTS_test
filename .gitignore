@@ -175,4 +175,12 @@ packages.txt
 # Antigravity
 .antigravity/
 .gemini/
-antigravity/
+antigravity/
+
+# opencode
+.opencode/
+opencode.json
+opencode.jsonc
+
+# VS Code
+.vscode/
