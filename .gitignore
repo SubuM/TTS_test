@@ -172,6 +172,9 @@ graphify-out/
 # Packages
 packages.txt
 
+# Database
+users.db
+
 # Antigravity
 .antigravity/
 .gemini/

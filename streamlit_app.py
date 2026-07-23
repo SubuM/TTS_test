@@ -10,7 +10,6 @@ from deep_translator import GoogleTranslator
 from gtts import gTTS
 import base64
 import sqlite3
-import hashlib  # Keep for admin hash comparison (or remove if not needed)
 import re
 from datetime import datetime
 
@@ -1438,7 +1437,7 @@ if uploaded_file is not None:
             
             with col_dl2:
                 if translated_text:
-                    translated_filename = f"{base_mame}_translated_{translation_language.lower().replace(' ', '_')}.txt"
+                    translated_filename = f"{base_name}_translated_{translation_language.lower().replace(' ', '_')}.txt"
                     translated_bytes = translated_text.encode('utf-8')
                     
                     st.download_button(
